@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"database/sql"
@@ -20,7 +20,7 @@ func ParseTable(db *sql.DB, tableName string) ([]string, []table.Row, error) {
 		// fmt.Println(name, schema)
 	}
 
-	rows, err := db.Query("select * from posts")
+	rows, err := db.Query(fmt.Sprintf("select * from %s", tableName))
 	if err != nil {
 		return nil, nil, err
 	}

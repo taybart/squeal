@@ -6,13 +6,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var baseStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("240"))
-
 type Table struct {
 	Name  string
-	Table table.Model
+	table table.Model
 }
 
 func NewTable(name string, cols []string, rows []table.Row) Table {
@@ -20,7 +16,6 @@ func NewTable(name string, cols []string, rows []table.Row) Table {
 	for _, col := range cols {
 		columns = append(columns, table.Column{Title: col, Width: 20})
 	}
-
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
@@ -41,31 +36,33 @@ func NewTable(name string, cols []string, rows []table.Row) Table {
 		Bold(false)
 	t.SetStyles(s)
 
-	return Table{Name: name, Table: t}
+	return Table{Name: name, table: t}
 }
-func (m Table) Init() tea.Cmd { return nil }
 
-func (m Table) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Table) Update(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			if m.Table.Focused() {
-				m.Table.Blur()
+			if m.table.Focused() {
+				m.table.Blur()
 			} else {
-				m.Table.Focus()
+				m.table.Focus()
 			}
 		case "enter":
-			return m, tea.Batch(
-				tea.Printf("Let's go to %s!", m.Table.SelectedRow()[1]),
+			return tea.Batch(
+				tea.Printf("Let's go to %s!", m.table.SelectedRow()),
 			)
 		}
 	}
-	m.Table, cmd = m.Table.Update(msg)
-	return m, cmd
+	m.table, cmd = m.table.Update(msg)
+	return cmd
 }
 
 func (m Table) View() string {
-	return baseStyle.Render(m.Table.View()) + "\n"
+	style := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	return style.Render(m.table.View()) + "\n"
 }

@@ -48,42 +48,13 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	fmt.Fprint(w, fn(str))
 }
 
-type DBList struct {
+type List struct {
 	list     list.Model
 	Choice   string
 	quitting bool
 }
 
-func (m DBList) Init() tea.Cmd {
-	return nil
-}
-
-func (m DBList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetWidth(msg.Width)
-		return m, nil
-
-	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "enter":
-			if i, ok := m.list.SelectedItem().(item); ok {
-				m.Choice = string(i)
-			}
-			return m, nil
-		}
-	}
-
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
-	return m, cmd
-}
-
-func (m DBList) View() string {
-	return "\n" + m.list.View()
-}
-
-func NewDBList(names []string) DBList {
+func NewList(names []string) List {
 	const defaultWidth = 20
 	items := []list.Item{}
 	for _, name := range names {
@@ -97,5 +68,30 @@ func NewDBList(names []string) DBList {
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
 
-	return DBList{list: l}
+	return List{list: l}
+}
+
+func (m *List) Update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.list.SetWidth(msg.Width)
+		return nil
+
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "enter":
+			if i, ok := m.list.SelectedItem().(item); ok {
+				m.Choice = string(i)
+			}
+			return nil
+		}
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return cmd
+}
+
+func (m List) View() string {
+	return "\n" + m.list.View()
 }
