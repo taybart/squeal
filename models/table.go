@@ -52,7 +52,7 @@ func (m *Table) Update(msg tea.Msg) tea.Cmd {
 			}
 		case "enter":
 			return tea.Batch(
-				tea.Printf("Let's go to %s!", m.table.SelectedRow()),
+				tea.Printf("Let's go to %s!", m.table.SelectedRow()[1]),
 			)
 		}
 	}

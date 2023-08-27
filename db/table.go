@@ -26,6 +26,8 @@ func ParseTable(db *sql.DB, tableName string) ([]string, []table.Row, error) {
 	}
 	defer rows.Close()
 	tableRows := []table.Row{}
+
+	// TODO: use any amount of rows
 	for rows.Next() {
 		var id string
 		var title string
