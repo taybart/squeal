@@ -70,7 +70,7 @@ export function TableExplorer(props: TableExplorerProps) {
 
   return (
     <Show when={props.visible()}>
-      <Card class="w-72 rounded-none border-l border-y-0 border-r-0 h-full">
+      <Card class="w-72 rounded-none border-0 h-auto max-h-96">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm">Database Explorer</CardTitle>
           <Button 

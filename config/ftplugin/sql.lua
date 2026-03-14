@@ -65,23 +65,22 @@ local function notify_client(event, data)
   vim.rpcnotify(client_id, event, data)
 end
 
--- Highlight the statement under cursor
+-- Highlight the character under cursor
 local function highlight()
   local buf = vim.api.nvim_get_current_buf()
-  local ns = vim.api.nvim_create_namespace('sql_statement_hl')
+  local ns = vim.api.nvim_create_namespace('sql_cursor_hl')
 
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
-  local node = get_stmt_ts_node()
-  if not node then return end
+  -- Get cursor position
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  row = row - 1 -- Convert to 0-based
 
-  local srow, scol = node:start()
-  local erow, ecol = node:end_()
-
-  vim.api.nvim_buf_set_extmark(buf, ns, srow, scol, {
-    end_row = erow,
-    end_col = ecol,
-    hl_group = 'CursorLine',
+  -- Highlight just the single character at cursor position
+  vim.api.nvim_buf_set_extmark(buf, ns, row, col, {
+    end_row = row,
+    end_col = col + 1,
+    hl_group = 'Cursor',
     priority = 100,
   })
 end

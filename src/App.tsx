@@ -304,7 +304,8 @@ function App() {
       />
 
       <div class="flex flex-1 overflow-hidden">
-        <div class={`${showDebug() ? 'flex-1' : 'w-full'} flex flex-col`}>
+        {/* Main content area */}
+        <div class="flex-1 flex flex-col min-w-0">
           <Editor
             content={content}
             mode={mode}
@@ -317,40 +318,43 @@ function App() {
           />
         </div>
 
-        <DebugPanel visible={showDebug} connected={connected} />
-        <ConnectionManager
-          visible={showConnections}
-          connections={connections}
-          selectedConnection={selectedConnection}
-          setSelectedConnection={setSelectedConnection}
-          addConnection={addConnection}
-          deleteConnection={deleteConnection}
-          testConnection={testConnection}
-          isLoading={isLoading}
-          onSelect={() => setShowConnections(false)}
-        />
-        <TableExplorer
-          visible={showExplorer}
-          selectedConnection={selectedConnection}
-          listTables={listTables}
-          getTableSchema={getTableSchema}
-          onClose={() => setShowExplorer(false)}
-          onExecuteTable={(tableName) => {
-            // Execute SELECT * FROM table immediately
-            const connId = selectedConnection()
-            if (!connId) return
+        {/* Right sidebar - stacks panels vertically */}
+        <div class="flex flex-col border-l">
+          <DebugPanel visible={showDebug} connected={connected} />
+          <ConnectionManager
+            visible={showConnections}
+            connections={connections}
+            selectedConnection={selectedConnection}
+            setSelectedConnection={setSelectedConnection}
+            addConnection={addConnection}
+            deleteConnection={deleteConnection}
+            testConnection={testConnection}
+            isLoading={isLoading}
+            onSelect={() => setShowConnections(false)}
+          />
+          <TableExplorer
+            visible={showExplorer}
+            selectedConnection={selectedConnection}
+            listTables={listTables}
+            getTableSchema={getTableSchema}
+            onClose={() => setShowExplorer(false)}
+            onExecuteTable={(tableName) => {
+              // Execute SELECT * FROM table immediately
+              const connId = selectedConnection()
+              if (!connId) return
 
-            const sql = `SELECT * FROM ${tableName} LIMIT 100`
-            setCurrentStatement(sql)
-            setShowResults(true)
+              const sql = `SELECT * FROM ${tableName} LIMIT 100`
+              setCurrentStatement(sql)
+              setShowResults(true)
 
-            executeSql(connId, sql).then(result => {
-              setSqlQueryResult(result)
-            }).catch(e => {
-              console.error("Failed to execute table query:", e)
-            })
-          }}
-        />
+              executeSql(connId, sql).then(result => {
+                setSqlQueryResult(result)
+              }).catch(e => {
+                console.error("Failed to execute table query:", e)
+              })
+            }}
+          />
+        </div>
       </div>
 
       {isCommandMode() && (

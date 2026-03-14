@@ -95,7 +95,7 @@ export function ConnectionManager(props: ConnectionManagerProps) {
 
   return (
     <Show when={props.visible()}>
-      <Card class="w-72 rounded-none border-l border-y-0 border-r-0 h-full">
+      <Card class="w-72 rounded-none border-0 h-auto max-h-80">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm">Connections</CardTitle>
           <div class="flex items-center gap-1">

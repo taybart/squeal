@@ -60,6 +60,9 @@ export function useNvim() {
       // Backend will push updates via events, no need to poll
     } catch (err) {
       console.error("Failed to send key:", err)
+      setNvimError(String(err))
+      // Clear error after 3 seconds
+      setTimeout(() => setNvimError(""), 3000)
     }
   }
 

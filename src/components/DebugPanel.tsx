@@ -1,5 +1,6 @@
-import { createSignal, createEffect } from "solid-js"
+import { createSignal, createEffect, For, Show } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 
 interface DebugPanelProps {
   visible: () => boolean
@@ -8,6 +9,28 @@ interface DebugPanelProps {
 
 export function DebugPanel(props: DebugPanelProps) {
   const [debugLogs, setDebugLogs] = createSignal<string[]>([])
+  const [nvimError, setNvimError] = createSignal<string | null>(null)
+  const [errorHistory, setErrorHistory] = createSignal<string[]>([])
+
+  // Listen for nvim errors in real-time
+  createEffect(() => {
+    if (!props.connected()) return
+
+    const unlisten = listen("nvim-state-update", (event) => {
+      const data = event.payload as any
+      if (data.error && data.error !== "") {
+        setNvimError(data.error)
+        // Add to history
+        setErrorHistory(prev => [...prev.slice(-19), data.error])
+      } else {
+        setNvimError(null)
+      }
+    })
+
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  })
 
   createEffect(() => {
     if (!props.connected() || !props.visible()) return
@@ -24,22 +47,58 @@ export function DebugPanel(props: DebugPanelProps) {
     return () => clearInterval(interval)
   })
 
-  if (!props.visible()) return null
-
   return (
-    <div class="w-80 border-l border-gray-700 bg-gray-800 flex flex-col">
-      <div class="p-2 bg-gray-900 text-white text-xs font-bold border-b border-gray-700">
-        Neovim Debug Logs
+    <Show when={props.visible()}>
+      <div class="w-80 flex flex-col border-b last:border-b-0">
+        {/* Current Error Section */}
+        <div class="p-3">
+          <div class="text-xs font-bold mb-2 flex items-center justify-between">
+            <span>Current Nvim Error</span>
+            <span class="text-[10px] text-muted-foreground">v:errmsg</span>
+          </div>
+          {nvimError() ? (
+            <div class="text-xs text-destructive bg-destructive/10 p-2 rounded break-words">
+              {nvimError()}
+            </div>
+          ) : (
+            <div class="text-xs text-muted-foreground italic">No errors</div>
+          )}
+        </div>
+
+        {/* Error History */}
+        <div class="p-3 border-t max-h-32 overflow-auto">
+          <div class="text-xs font-bold mb-2">Error History</div>
+          {errorHistory().length === 0 ? (
+            <div class="text-xs text-muted-foreground italic">No recent errors</div>
+          ) : (
+            <For each={errorHistory().slice().reverse()}>
+              {(error) => (
+                <div class="text-[10px] text-muted-foreground mb-1 truncate" title={error}>
+                  {error}
+                </div>
+              )}
+            </For>
+          )}
+        </div>
+
+        {/* Debug Logs */}
+        <div class="flex flex-col max-h-64">
+          <div class="p-2 text-xs font-bold border-t">
+            Nvim Debug Logs (stderr)
+          </div>
+          <div class="flex-1 overflow-auto p-2 font-mono text-xs min-h-0">
+            {debugLogs().length === 0 ? (
+              <span class="text-muted-foreground">No debug logs yet...</span>
+            ) : (
+              <For each={debugLogs().slice(-100)}>
+                {(log) => (
+                  <div class="text-muted-foreground mb-1 break-words">{log}</div>
+                )}
+              </For>
+            )}
+          </div>
+        </div>
       </div>
-      <div class="flex-1 overflow-auto p-2 font-mono text-xs">
-        {debugLogs().length === 0 ? (
-          <span class="text-gray-500">No debug logs yet...</span>
-        ) : (
-          debugLogs().map((log) => (
-            <div class="text-gray-300 mb-1">{log}</div>
-          ))
-        )}
-      </div>
-    </div>
+    </Show>
   )
 }

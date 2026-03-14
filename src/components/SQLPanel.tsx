@@ -50,7 +50,6 @@ interface SQLPanelProps {
 export function SQLPanel(props: SQLPanelProps) {
   const [editingCell, setEditingCell] = createSignal<{ rowIndex: number; columnName: string } | null>(null)
   const [editValue, setEditValue] = createSignal<string>("")
-  const [isUpdating, setIsUpdating] = createSignal(false)
   const [lastError, setLastError] = createSignal<string | null>(null)
   
   // Navigation state
@@ -72,6 +71,10 @@ export function SQLPanel(props: SQLPanelProps) {
       setColumns([])
     }
   })
+
+  const isEditable = () => {
+    return props.tableName() && props.primaryKeyColumn()
+  }
 
   // Handle keyboard navigation when panel is focused
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -108,7 +111,7 @@ export function SQLPanel(props: SQLPanelProps) {
         break
       case 'Enter':
         e.preventDefault()
-        // Start editing the selected cell
+        // Start inline editing for the selected cell
         const row = result[selectedRow()]
         const col = cols[selectedCol()]
         if (row && col && isEditable() && col !== props.primaryKeyColumn()) {
@@ -122,21 +125,16 @@ export function SQLPanel(props: SQLPanelProps) {
     }
   }
 
-  // Attach/detach keydown listener based on focus
+  // Attach keydown listener
   onMount(() => {
     const listener = (e: KeyboardEvent) => handleKeyDown(e)
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
   })
 
-  const isEditable = () => {
-    // Can only edit if we have a table name and primary key column
-    return props.tableName() && props.primaryKeyColumn()
-  }
-
   const handleCellDoubleClick = (rowIndex: number, columnName: string, currentValue: any) => {
     if (!isEditable()) return
-    if (columnName === props.primaryKeyColumn()) return // Don't allow editing PK
+    if (columnName === props.primaryKeyColumn()) return
 
     setEditingCell({ rowIndex, columnName })
     setEditValue(currentValue === null ? "" : String(currentValue))
@@ -157,14 +155,12 @@ export function SQLPanel(props: SQLPanelProps) {
     const pkColumn = props.primaryKeyColumn()
 
     if (!connId || !tableName || !pkColumn) {
-      setLastError("Cannot save: missing connection or table info")
       toast.error("Cannot save: missing connection or table info")
       return
     }
 
     const pkValue = row[pkColumn]
     if (pkValue === undefined) {
-      setLastError("Cannot save: primary key value not found in row")
       toast.error("Cannot save: primary key value not found in row")
       return
     }
@@ -183,18 +179,13 @@ export function SQLPanel(props: SQLPanelProps) {
     } else if (originalValue !== null && typeof originalValue === "boolean") {
       newValue = newValue.toLowerCase() === "true" || newValue === "1"
     } else if (newValue === "" && originalValue !== null) {
-      // Empty string for non-null original - treat as null
       newValue = null
     }
 
-    // Check if value actually changed
     if (JSON.stringify(newValue) === JSON.stringify(originalValue)) {
       setEditingCell(null)
       return
     }
-
-    setIsUpdating(true)
-    setLastError(null)
 
     try {
       const result = await props.updateRow(
@@ -207,27 +198,19 @@ export function SQLPanel(props: SQLPanelProps) {
       )
 
       if (result.rows_affected === 1) {
-        // Refresh the query results
         const stmt = props.currentStatement()
         if (stmt) {
           const refreshedResult = await props.executeSql(connId, stmt)
-          // Update the parent component's result
           window.dispatchEvent(new CustomEvent('sql-result-refreshed', { detail: refreshedResult }))
         }
         setEditingCell(null)
         setEditValue("")
         toast.success("Cell updated successfully")
       } else {
-        const errorMsg = `Update affected ${result.rows_affected} rows (expected 1)`
-        setLastError(errorMsg)
-        toast.error(errorMsg)
+        toast.error(`Update affected ${result.rows_affected} rows (expected 1)`)
       }
     } catch (e) {
-      const errorMsg = String(e)
-      setLastError(errorMsg)
-      toast.error(errorMsg)
-    } finally {
-      setIsUpdating(false)
+      toast.error(String(e))
     }
   }
 
@@ -235,7 +218,6 @@ export function SQLPanel(props: SQLPanelProps) {
     const result = props.sqlQueryResult()
     if (!result) return null
 
-    // Check if it's an array of rows or an object with rows_affected
     if (Array.isArray(result)) {
       if (result.length === 0) {
         return <div class="text-muted-foreground text-xs">No rows returned</div>
@@ -303,7 +285,6 @@ export function SQLPanel(props: SQLPanelProps) {
                                   onInput={(e) => setEditValue(e.currentTarget.value)}
                                   onKeyDown={(e: KeyboardEvent) => handleCellKeyDown(e, rowIndex(), row, col)}
                                   onBlur={() => {
-                                    // Auto-save on blur if value changed
                                     if (editValue() !== String(row[col] === null ? "" : row[col])) {
                                       saveCellEdit(rowIndex(), row, col)
                                     } else {
@@ -311,7 +292,6 @@ export function SQLPanel(props: SQLPanelProps) {
                                     }
                                   }}
                                   class="w-full rounded-none border-0 border-primary ring-0 focus-visible:ring-0"
-                                  disabled={isUpdating()}
                                   autofocus
                                 />
                               </TextField>
@@ -326,14 +306,19 @@ export function SQLPanel(props: SQLPanelProps) {
             </TableBody>
           </Table>
           
-          {editable && props.isFocused() && (
+          {editable && props.isFocused() && !editingCell() && (
             <div class="mt-2 text-xs text-muted-foreground">
-              j/k: move up/down • h/l: move left/right • Enter: edit • Esc: back to editor
+              j/k: move up/down • h/l: move left/right • Enter: edit cell • Double-click: edit • Esc: back to editor
+            </div>
+          )}
+          {editable && props.isFocused() && editingCell() && (
+            <div class="mt-2 text-xs text-primary font-medium">
+              Press Enter to save, Escape to cancel
             </div>
           )}
           {editable && !props.isFocused() && (
             <div class="mt-2 text-xs text-muted-foreground">
-              Double-click cells to edit • Ctrl+J to focus results
+              Ctrl+J to focus results panel
             </div>
           )}
         </div>
@@ -369,12 +354,15 @@ export function SQLPanel(props: SQLPanelProps) {
             {props.primaryKeyColumn() && (
               <Badge variant="default" class="text-[10px]">PK: {props.primaryKeyColumn()}</Badge>
             )}
+            {editingCell() && (
+              <Badge variant="secondary" class="text-[10px] animate-pulse">editing...</Badge>
+            )}
           </div>
           <div class="flex items-center gap-2">
             {props.currentStatement() && (
               <Button 
                 onClick={props.onExecute}
-                disabled={!props.hasSelectedConnection()}
+                disabled={!props.hasSelectedConnection() || !!editingCell()}
                 size="sm"
                 variant={props.hasSelectedConnection() ? "default" : "secondary"}
               >

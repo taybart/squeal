@@ -28,16 +28,29 @@ pub async fn get_current_file(state: tauri::State<'_, SharedState>) -> Result<St
 
 #[tauri::command]
 pub async fn send_keys(state: tauri::State<'_, SharedState>, keys: String) -> Result<(), String> {
+    eprintln!("[nvim] Sending keys: {:?}", keys);
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
-        // Use nvim_input for proper key processing including special keys
-        nvim_state
-            .nvim
-            .input(&keys)
-            .await
-            .map_err(|e| format!("Failed to send keys: {}", e))?;
-
-        Ok(())
+        // Use nvim_input with timeout to prevent hanging
+        let result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            nvim_state.nvim.input(&keys)
+        ).await;
+        
+        match result {
+            Ok(Ok(_bytes_written)) => {
+                eprintln!("[nvim] Keys sent successfully");
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                eprintln!("[nvim] Failed to send keys: {}", e);
+                Err(format!("Failed to send keys: {}", e))
+            }
+            Err(_) => {
+                eprintln!("[nvim] Timeout after 2 seconds");
+                Err("Timeout: nvim did not respond to keys within 2 seconds".to_string())
+            }
+        }
     } else {
         Err("Neovim not initialized".to_string())
     }
@@ -373,6 +386,136 @@ pub async fn get_all_sql_statements(
             .collect();
         
         Ok(statements)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Open a scratch buffer for editing cell content
+#[tauri::command]
+pub async fn open_scratch_buffer(
+    state: tauri::State<'_, SharedState>,
+    content: String,
+    buffer_id: String,
+) -> Result<(), String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        let nvim = &nvim_state.nvim;
+        
+        // Create a new scratch buffer with a unique name
+        let buf_name = format!("squeal://cell-edit/{}", buffer_id);
+        
+        // Create new buffer
+        nvim.command(&format!("enew"))
+            .await
+            .map_err(|e| format!("Failed to create new buffer: {}", e))?;
+        
+        // Set buffer name
+        nvim.command(&format!("file {}", buf_name))
+            .await
+            .map_err(|e| format!("Failed to set buffer name: {}", e))?;
+        
+        // Set content
+        let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let buf = nvim.get_current_buf()
+            .await
+            .map_err(|e| format!("Failed to get buffer: {}", e))?;
+        
+        buf.set_lines(0, -1, false, lines)
+            .await
+            .map_err(|e| format!("Failed to set buffer content: {}", e))?;
+        
+        // Set buffer as scratch (no file, can be closed without saving warning)
+        nvim.command("setlocal buftype=acwrite")
+            .await
+            .map_err(|e| format!("Failed to set buftype: {}", e))?;
+        nvim.command("setlocal bufhidden=wipe")
+            .await
+            .map_err(|e| format!("Failed to set bufhidden: {}", e))?;
+        nvim.command("setlocal noswapfile")
+            .await
+            .map_err(|e| format!("Failed to set noswapfile: {}", e))?;
+        
+        // Set a buffer variable so we can identify it
+        nvim.command(&format!("let b:squeal_edit_id = '{}'", buffer_id))
+            .await
+            .map_err(|e| format!("Failed to set buffer variable: {}", e))?;
+        
+        Ok(())
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Get content from the scratch buffer and close it
+#[tauri::command]
+pub async fn get_scratch_buffer_content(
+    state: tauri::State<'_, SharedState>,
+) -> Result<String, String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        let nvim = &nvim_state.nvim;
+        
+        // Check if current buffer is a squeal edit buffer
+        let buf_name = nvim.command_output("echo expand('%:p')")
+            .await
+            .map_err(|e| format!("Failed to get buffer name: {}", e))?;
+        
+        if !buf_name.contains("squeal://cell-edit/") {
+            return Err("Not in a squeal edit buffer".to_string());
+        }
+        
+        // Get content
+        let buf = nvim.get_current_buf()
+            .await
+            .map_err(|e| format!("Failed to get buffer: {}", e))?;
+        
+        let lines = buf.get_lines(0, -1, false)
+            .await
+            .map_err(|e| format!("Failed to get lines: {}", e))?;
+        
+        let content = lines.join("\n");
+        
+        // Close the buffer
+        nvim.command("bwipeout!")
+            .await
+            .map_err(|e| format!("Failed to close buffer: {}", e))?;
+        
+        Ok(content)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Check if currently in a scratch buffer and get its ID
+#[tauri::command]
+pub async fn get_scratch_buffer_id(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<String>, String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        let nvim = &nvim_state.nvim;
+        
+        // Check if current buffer is a squeal edit buffer
+        let buf_name = nvim.command_output("echo expand('%:p')")
+            .await
+            .map_err(|e| format!("Failed to get buffer name: {}", e))?;
+        
+        if !buf_name.contains("squeal://cell-edit/") {
+            return Ok(None);
+        }
+        
+        // Get the buffer ID from the variable
+        let id_result = nvim.command_output("echo get(b:, 'squeal_edit_id', '')")
+            .await
+            .map_err(|e| format!("Failed to get buffer ID: {}", e))?;
+        
+        let id = id_result.trim().to_string();
+        if id.is_empty() {
+            return Ok(None);
+        }
+        
+        Ok(Some(id))
     } else {
         Err("Neovim not initialized".to_string())
     }

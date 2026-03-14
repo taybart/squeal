@@ -72,10 +72,10 @@ mode_group('v', {
 	{ '<S-Tab>', '<gv' },
 })
 
--- Configure treesitter to look for parsers in our config directory
--- Note: runtimepath is already set by --cmd in state.rs
--- Add our lua directory to the path
-vim.opt.runtimepath:append(vim.fn.expand('<sfile>:p:h') .. '/lua')
+-- Configure runtimepath for our custom lua modules
+local config_dir = vim.fn.expand('<sfile>:p:h')
+vim.opt.runtimepath:prepend(config_dir)
+vim.opt.runtimepath:append(config_dir .. '/lua')
 
 -- Load the squeal_sql module
 local ok, squeal_sql = pcall(require, 'squeal_sql')
