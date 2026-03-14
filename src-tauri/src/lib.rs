@@ -40,7 +40,9 @@ pub fn run() {
             nvim::open_file,
             nvim::get_current_file,
             nvim::get_debug_logs,
-            nvim::get_last_error
+            nvim::get_last_error,
+            nvim::capture_sql_statement,
+            nvim::get_all_sql_statements
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {

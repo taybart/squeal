@@ -16,6 +16,11 @@ pub enum NvimEvent {
     ModeChange(String),
     CursorMove(i64, i64),
     BufUpdate(Vec<String>),
+    SqlStatement(String),
+    SqlExecute {
+        statements: Vec<String>,
+        mode: String,
+    },
 }
 
 pub struct NeovimState {
@@ -66,13 +71,33 @@ pub async fn start_nvim_instance(
     let app_handle_for_events = app_handle.clone();
     tokio::spawn(async move {
         while let Some(event) = event_receiver.recv().await {
-            let payload = match event {
-                NvimEvent::Redraw(data) => format!("{:?}", data),
-                NvimEvent::ModeChange(mode) => mode,
-                NvimEvent::CursorMove(row, col) => format!("{}, {}", row, col),
-                NvimEvent::BufUpdate(lines) => lines.join("\n"),
-            };
-            let _ = app_handle_for_events.emit("nvim-event", payload);
+            match event {
+                NvimEvent::Redraw(_data) => {
+                    // Redraw events - not currently used for UI
+                }
+                NvimEvent::ModeChange(mode) => {
+                    let _ = app_handle_for_events.emit("nvim-mode-change", mode);
+                }
+                NvimEvent::CursorMove(row, col) => {
+                    let _ =
+                        app_handle_for_events.emit("nvim-cursor-move", format!("{}, {}", row, col));
+                }
+                NvimEvent::BufUpdate(lines) => {
+                    let _ = app_handle_for_events.emit("nvim-buf-update", lines.join("\n"));
+                }
+                NvimEvent::SqlStatement(stmt) => {
+                    let _ = app_handle_for_events.emit("sql-statement", stmt);
+                }
+                NvimEvent::SqlExecute { statements, mode } => {
+                    let _ = app_handle_for_events.emit(
+                        "sql-execute",
+                        serde_json::json!({
+                            "statements": statements,
+                            "mode": mode
+                        }),
+                    );
+                }
+            }
         }
     });
 
@@ -80,12 +105,19 @@ pub async fn start_nvim_instance(
     // Use --headless for no UI and -u to load local init.lua
     let current_dir =
         std::env::current_dir().map_err(|e| format!("Failed to get current dir: {}", e))?;
-    let init_lua_path = current_dir.join("../init.lua");
+    let config_dir = current_dir.join("../config");
+    let init_lua_path = config_dir.join("init.lua");
+    
+    // Build runtimepath: include our config dir first, then default paths
+    let rtp_cmd = format!("set runtimepath^={}", config_dir.display());
+    
     let mut nvim_process = tokio::process::Command::new("nvim")
         .args([
             "--headless",
             "--listen",
             &listen_addr,
+            "--cmd",  // Set runtimepath BEFORE loading init.lua
+            &rtp_cmd,
             "-u",
             &init_lua_path.to_string_lossy(),
         ])
@@ -127,10 +159,7 @@ pub async fn start_nvim_instance(
 
     // Spawn the join_handle to process nvim events in the background
     // This is critical - without it, nvim will block when its output buffer fills up
-    tokio::spawn(async move {
-        if let Err(e) = join_handle.await {
-        }
-    });
+    tokio::spawn(async move { if let Err(e) = join_handle.await {} });
 
     /*
     // Attach UI - this causes nvim to stop responding to commands
@@ -191,13 +220,11 @@ pub async fn start_nvim_instance(
     .await;
 
     match result {
-        Ok(Ok(())) => {
-        }
+        Ok(Ok(())) => {}
         Ok(Err(e)) => {
             return Err(format!("Failed to open file: {}", e));
         }
-        Err(_) => {
-        }
+        Err(_) => {}
     }
 
     // Store the Neovim state with the nvim instance

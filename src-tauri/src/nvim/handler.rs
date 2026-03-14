@@ -67,6 +67,54 @@ impl Handler for NeovimHandler {
                     }
                 }
             }
+            "sql_statement" => {
+                // SQL statement notification from ftplugin
+                if let Some(Value::Map(data)) = args.first() {
+                    for (key, value) in data {
+                        if let (Value::String(k), Value::String(v)) = (key, value) {
+                            if k.as_str() == Some("statement") {
+                                let _ = self.event_sender.send(NvimEvent::SqlStatement(v.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+            "sql_execute" => {
+                // SQL execution notification from ftplugin
+                if let Some(Value::Map(data)) = args.first() {
+                    let mut statements = Vec::new();
+                    let mut mode = "single".to_string();
+                    
+                    for (key, value) in data {
+                        if let Value::String(k) = key {
+                            match k.as_str() {
+                                Some("statements") => {
+                                    if let Value::Array(stmts) = value {
+                                        for stmt in stmts {
+                                            if let Value::String(s) = stmt {
+                                                statements.push(s.to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                                Some("statement") => {
+                                    if let Value::String(s) = value {
+                                        statements.push(s.to_string());
+                                    }
+                                }
+                                Some("mode") => {
+                                    if let Value::String(m) = value {
+                                        mode = m.to_string();
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    
+                    let _ = self.event_sender.send(NvimEvent::SqlExecute { statements, mode });
+                }
+            }
             _ => {
                 // Other notifications can be logged if needed
             }

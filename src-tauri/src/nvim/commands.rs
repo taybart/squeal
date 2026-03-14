@@ -318,3 +318,62 @@ pub async fn open_file(
     let state_arc: SharedState = (*state).clone();
     open_file_internal(app_handle, state_arc).await
 }
+
+// Execute the SQL capture function directly via Lua
+#[tauri::command]
+pub async fn capture_sql_statement(
+    state: tauri::State<'_, SharedState>,
+) -> Result<String, String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        // Simple lua command to get the statement
+        let result = nvim_state
+            .nvim
+            .command_output("lua print(squeal_sql.get_stmt_under_cursor())")
+            .await
+            .map_err(|e| format!("Failed to execute Lua: {}", e))?;
+        
+        let trimmed = result.trim();
+        if trimmed == "nil" || trimmed.is_empty() {
+            return Err("No SQL statement found under cursor".to_string());
+        }
+        
+        Ok(trimmed.to_string())
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Execute all SQL statements in the file
+#[tauri::command]
+pub async fn get_all_sql_statements(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Vec<String>, String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        // Use vim.inspect to serialize the table to a string we can parse
+        let result = nvim_state
+            .nvim
+            .command_output("lua print(vim.inspect(squeal_sql.get_all_statements()))")
+            .await
+            .map_err(|e| format!("Failed to execute Lua: {}", e))?;
+        
+        // Parse the vim.inspect output which looks like: { "stmt1", "stmt2" }
+        let trimmed = result.trim();
+        if trimmed == "{}" || trimmed == "nil" {
+            return Ok(vec![]);
+        }
+        
+        // Simple parsing - remove { } and split by ", 
+        let content = trimmed.trim_start_matches('{').trim_end_matches('}');
+        let statements: Vec<String> = content
+            .split("\", \"")
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        
+        Ok(statements)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
