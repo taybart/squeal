@@ -12,9 +12,18 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "squeal",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "width": 500,
+        "height": 600,
+        "visible": false,
+        "url": "settings.html"
       }
     ],
     "security": {

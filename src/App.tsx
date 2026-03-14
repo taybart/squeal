@@ -1,5 +1,6 @@
-import { createSignal, createEffect } from "solid-js"
+import { createSignal, createEffect, onMount, Show } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import { useNvim } from "~/hooks/useNvim"
 import { useKeyBuffer } from "~/hooks/useKeyBuffer"
 import { useSql } from "~/hooks/useSql"
@@ -8,7 +9,6 @@ import { Editor } from "~/components/Editor"
 import { StatusBar } from "~/components/StatusBar"
 import { SQLPanel } from "~/components/SQLPanel"
 import { DebugPanel } from "~/components/DebugPanel"
-import { ConnectionManager } from "~/components/ConnectionManager"
 import { TableExplorer } from "~/components/TableExplorer"
 import { Toaster } from "~/components/ui/sonner"
 import "~/App.css"
@@ -17,7 +17,6 @@ function App() {
   const [error] = createSignal<string | null>(null)
   const [showDebug, setShowDebug] = createSignal(false)
   const [sqlQueryResult, setSqlQueryResult] = createSignal<any>(null)
-  const [showConnections, setShowConnections] = createSignal(true)
   const [showExplorer, setShowExplorer] = createSignal(false)
   const [currentQueryTable, setCurrentQueryTable] = createSignal<string | null>(null)
   const [currentQueryPrimaryKey, setCurrentQueryPrimaryKey] = createSignal<string | null>(null)
@@ -35,7 +34,14 @@ function App() {
     sendKey
   } = useNvim()
 
-  const { flushKeys, handleKeyDown, clearBuffer } = useKeyBuffer(sendKey)
+  // Function to open the settings window
+  const openSettingsWindow = async () => {
+    try {
+      await invoke("open_settings_window")
+    } catch (e) {
+      console.error("Failed to open settings window:", e)
+    }
+  }
 
   const {
     currentStatement,
@@ -48,19 +54,32 @@ function App() {
   const {
     selectedConnection,
     setSelectedConnection,
-    connections,
-    addConnection,
-    deleteConnection,
-    testConnection,
     executeSql,
     listTables,
     getTableSchema,
     updateRow,
-    isLoading,
     error: connError,
   } = useConnections()
 
-  // Load SQL query result when statement changes
+  const { flushKeys, handleKeyDown, clearBuffer } = useKeyBuffer(sendKey)
+
+  // Listen for events from the menu and settings window
+  onMount(() => {
+    // Listen for "menu-open-settings" event from the menu
+    const unlistenOpenSettings = listen("menu-open-settings", () => {
+      openSettingsWindow()
+    })
+
+    // Listen for "connection-selected" event from the settings window
+    const unlistenConnectionSelected = listen<{ connectionId: number }>("connection-selected", (event) => {
+      setSelectedConnection(event.payload.connectionId)
+    })
+
+    return () => {
+      unlistenOpenSettings.then(fn => fn())
+      unlistenConnectionSelected.then(fn => fn())
+    }
+  })
   createEffect(() => {
     setSqlQueryResult(null)
   })
@@ -81,8 +100,8 @@ function App() {
     // First check if we have a connection selected
     const connId = selectedConnection()
     if (!connId) {
-      // Show connections panel if no connection selected
-      setShowConnections(true)
+      // Open settings window if no connection selected
+      await openSettingsWindow()
       return
     }
 
@@ -321,17 +340,6 @@ function App() {
         {/* Right sidebar - stacks panels vertically */}
         <div class="flex flex-col border-l">
           <DebugPanel visible={showDebug} connected={connected} />
-          <ConnectionManager
-            visible={showConnections}
-            connections={connections}
-            selectedConnection={selectedConnection}
-            setSelectedConnection={setSelectedConnection}
-            addConnection={addConnection}
-            deleteConnection={deleteConnection}
-            testConnection={testConnection}
-            isLoading={isLoading}
-            onSelect={() => setShowConnections(false)}
-          />
           <TableExplorer
             visible={showExplorer}
             selectedConnection={selectedConnection}
@@ -357,13 +365,13 @@ function App() {
         </div>
       </div>
 
-      {isCommandMode() && (
+      <Show when={isCommandMode()}>
         <div class="bg-gray-900 border-t border-gray-700 p-2 font-mono text-sm text-gray-100">
           <span class="text-green-500">:</span>
           {cmdline()}
           <span class="animate-pulse">█</span>
         </div>
-      )}
+      </Show>
 
       <SQLPanel
         currentStatement={currentStatement}
@@ -386,11 +394,11 @@ function App() {
         onBlur={() => setFocusedPanel('editor')}
       />
 
-      {displayError() && (
+      <Show when={displayError()}>
         <div class="bg-red-900 border-t border-red-700 p-2 font-mono text-sm text-red-100">
           <span class="font-bold">E:</span> {displayError()}
         </div>
-      )}
+      </Show>
 
       <div class="bg-gray-800 text-gray-400 p-2 text-xs flex justify-between">
         <span>Type to send keys to Neovim. White block shows cursor position.</span>

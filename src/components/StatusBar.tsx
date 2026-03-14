@@ -1,3 +1,4 @@
+import { Show } from "solid-js"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import { Separator } from "~/components/ui/separator"
@@ -39,14 +40,14 @@ export function StatusBar(props: StatusBarProps) {
       <div class="flex items-center gap-3">
         <span class="font-bold text-lg">Squeal</span>
         <span class="text-sm text-muted-foreground">{props.currentFile()}</span>
-        {props.connected() && (
+        <Show when={props.connected()}>
           <Badge variant={getModeVariant() as any}>
             {getModeDisplay()}
           </Badge>
-        )}
-        {props.error() && (
+        </Show>
+        <Show when={props.error()}>
           <Badge variant="destructive">{props.error()}</Badge>
-        )}
+        </Show>
       </div>
       <div class="flex items-center gap-2">
         <Button

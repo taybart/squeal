@@ -10,6 +10,43 @@ mod nvim;
 pub use database::{DatabaseManager, SharedDbManager};
 pub use nvim::{NeovimState, SharedState};
 
+// Internal implementation to open or focus the settings window
+pub async fn open_settings_window_impl(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(settings_window) = app.get_webview_window("settings") {
+        // Window already exists, show and focus it
+        settings_window
+            .show()
+            .map_err(|e| format!("Failed to show settings window: {}", e))?;
+        settings_window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus settings window: {}", e))?;
+        Ok(())
+    } else {
+        // Need to create the window
+        let window_builder = tauri::WebviewWindowBuilder::new(
+            &app,
+            "settings",
+            tauri::WebviewUrl::App("settings.html".into()),
+        )
+        .title("Settings")
+        .inner_size(500.0, 600.0)
+        .resizable(true)
+        .visible(true);
+        
+        window_builder
+            .build()
+            .map_err(|e| format!("Failed to create settings window: {}", e))?;
+        
+        Ok(())
+    }
+}
+
+// Command wrapper for the settings window
+#[tauri::command]
+async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    open_settings_window_impl(app).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize the shared state
@@ -70,6 +107,7 @@ pub fn run() {
         .manage(state)
         .manage(db_manager)
         .invoke_handler(tauri::generate_handler![
+            open_settings_window,
             nvim::start_nvim,
             nvim::send_keys,
             nvim::get_buffer_content,

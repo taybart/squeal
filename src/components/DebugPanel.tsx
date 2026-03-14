@@ -21,7 +21,7 @@ export function DebugPanel(props: DebugPanelProps) {
       if (data.error && data.error !== "") {
         setNvimError(data.error)
         // Add to history
-        setErrorHistory(prev => [...prev.slice(-19), data.error])
+        setErrorHistory([...errorHistory().slice(-19), data.error])
       } else {
         setNvimError(null)
       }
@@ -51,26 +51,22 @@ export function DebugPanel(props: DebugPanelProps) {
     <Show when={props.visible()}>
       <div class="w-80 flex flex-col border-b last:border-b-0">
         {/* Current Error Section */}
-        <div class="p-3">
+          <div class="p-3">
           <div class="text-xs font-bold mb-2 flex items-center justify-between">
             <span>Current Nvim Error</span>
             <span class="text-[10px] text-muted-foreground">v:errmsg</span>
           </div>
-          {nvimError() ? (
+          <Show when={nvimError()} fallback={<div class="text-xs text-muted-foreground italic">No errors</div>}>
             <div class="text-xs text-destructive bg-destructive/10 p-2 rounded break-words">
               {nvimError()}
             </div>
-          ) : (
-            <div class="text-xs text-muted-foreground italic">No errors</div>
-          )}
+          </Show>
         </div>
 
         {/* Error History */}
-        <div class="p-3 border-t max-h-32 overflow-auto">
+          <div class="p-3 border-t max-h-32 overflow-auto">
           <div class="text-xs font-bold mb-2">Error History</div>
-          {errorHistory().length === 0 ? (
-            <div class="text-xs text-muted-foreground italic">No recent errors</div>
-          ) : (
+          <Show when={errorHistory().length > 0} fallback={<div class="text-xs text-muted-foreground italic">No recent errors</div>}>
             <For each={errorHistory().slice().reverse()}>
               {(error) => (
                 <div class="text-[10px] text-muted-foreground mb-1 truncate" title={error}>
@@ -78,7 +74,7 @@ export function DebugPanel(props: DebugPanelProps) {
                 </div>
               )}
             </For>
-          )}
+          </Show>
         </div>
 
         {/* Debug Logs */}
@@ -87,15 +83,13 @@ export function DebugPanel(props: DebugPanelProps) {
             Nvim Debug Logs (stderr)
           </div>
           <div class="flex-1 overflow-auto p-2 font-mono text-xs min-h-0">
-            {debugLogs().length === 0 ? (
-              <span class="text-muted-foreground">No debug logs yet...</span>
-            ) : (
+            <Show when={debugLogs().length > 0} fallback={<span class="text-muted-foreground">No debug logs yet...</span>}>
               <For each={debugLogs().slice(-100)}>
                 {(log) => (
                   <div class="text-muted-foreground mb-1 break-words">{log}</div>
                 )}
               </For>
-            )}
+            </Show>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
 -- test
 INSERT into users (name) values ('this guy dude');
-SELECT * FROM users where name like 'test%'; 
+SELECT * FROM users where name like '%test%'; 
 SELECT * FROM users;

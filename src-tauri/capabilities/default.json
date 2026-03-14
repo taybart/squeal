@@ -2,12 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "settings"],
   "permissions": [
     "core:default",
     "opener:default",
     "core:event:default",
     "core:event:allow-listen",
+    "core:event:allow-emit",
+    "core:event:allow-emit-to",
     "dialog:default",
     "dialog:allow-open",
     "core:menu:default",
@@ -20,6 +22,12 @@
     "core:menu:allow-popup",
     "core:menu:allow-create-default",
     "core:menu:allow-set-as-app-menu",
-    "core:menu:allow-set-as-window-menu"
+    "core:menu:allow-set-as-window-menu",
+    "core:window:default",
+    "core:window:allow-create",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
   ]
 }

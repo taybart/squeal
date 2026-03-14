@@ -236,7 +236,9 @@ export function SQLPanel(props: SQLPanelProps) {
                   {(col, colIndex) => (
                     <TableHead class={props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}>
                       {col}
-                      {col === pkColumn && <Badge variant="default" class="ml-1">PK</Badge>}
+                      <Show when={col === pkColumn}>
+                        <Badge variant="default" class="ml-1">PK</Badge>
+                      </Show>
                     </TableHead>
                   )}
                 </For>
@@ -306,21 +308,21 @@ export function SQLPanel(props: SQLPanelProps) {
             </TableBody>
           </Table>
           
-          {editable && props.isFocused() && !editingCell() && (
+          <Show when={isEditable() && props.isFocused() && !editingCell()}>
             <div class="mt-2 text-xs text-muted-foreground">
               j/k: move up/down • h/l: move left/right • Enter: edit cell • Double-click: edit • Esc: back to editor
             </div>
-          )}
-          {editable && props.isFocused() && editingCell() && (
+          </Show>
+          <Show when={isEditable() && props.isFocused() && editingCell()}>
             <div class="mt-2 text-xs text-primary font-medium">
               Press Enter to save, Escape to cancel
             </div>
-          )}
-          {editable && !props.isFocused() && (
+          </Show>
+          <Show when={isEditable() && !props.isFocused()}>
             <div class="mt-2 text-xs text-muted-foreground">
               Ctrl+J to focus results panel
             </div>
-          )}
+          </Show>
         </div>
       )
     } else if (result.rows_affected !== undefined) {
@@ -344,22 +346,22 @@ export function SQLPanel(props: SQLPanelProps) {
         onClick={props.onFocus}
       >
         <CardHeader class="flex flex-row items-center justify-between space-y-0 py-3">
+            <div class="flex items-center gap-2">
+              <CardTitle class={`text-sm ${props.isFocused() ? 'text-primary' : ''}`}>
+                SQL Results {props.isFocused() ? '(focused)' : ''}
+              </CardTitle>
+              <Show when={props.tableName()}>
+                <Badge variant="outline">{props.tableName()}</Badge>
+              </Show>
+              <Show when={props.primaryKeyColumn()}>
+                <Badge variant="default" class="text-[10px]">PK: {props.primaryKeyColumn()}</Badge>
+              </Show>
+              <Show when={editingCell()}>
+                <Badge variant="secondary" class="text-[10px] animate-pulse">editing...</Badge>
+              </Show>
+            </div>
           <div class="flex items-center gap-2">
-            <CardTitle class={`text-sm ${props.isFocused() ? 'text-primary' : ''}`}>
-              SQL Results {props.isFocused() && '(focused)'}
-            </CardTitle>
-            {props.tableName() && (
-              <Badge variant="outline">{props.tableName()}</Badge>
-            )}
-            {props.primaryKeyColumn() && (
-              <Badge variant="default" class="text-[10px]">PK: {props.primaryKeyColumn()}</Badge>
-            )}
-            {editingCell() && (
-              <Badge variant="secondary" class="text-[10px] animate-pulse">editing...</Badge>
-            )}
-          </div>
-          <div class="flex items-center gap-2">
-            {props.currentStatement() && (
+            <Show when={props.currentStatement()}>
               <Button 
                 onClick={props.onExecute}
                 disabled={!props.hasSelectedConnection() || !!editingCell()}
@@ -368,7 +370,7 @@ export function SQLPanel(props: SQLPanelProps) {
               >
                 Execute
               </Button>
-            )}
+            </Show>
             <Button 
               variant="ghost" 
               size="icon"
@@ -380,12 +382,12 @@ export function SQLPanel(props: SQLPanelProps) {
           </div>
         </CardHeader>
         <CardContent class="flex-1 overflow-auto pt-0">
-          {props.currentStatement() && (
+          <Show when={props.currentStatement()}>
             <div class="mb-4">
               <div class="text-xs text-muted-foreground mb-1">Current Statement:</div>
               <pre class="text-primary bg-muted p-2 rounded text-xs overflow-auto">{props.currentStatement()}</pre>
             </div>
-          )}
+          </Show>
 
           <Show when={props.sqlQueryResult()}>
             <div class="mb-4">
@@ -394,26 +396,26 @@ export function SQLPanel(props: SQLPanelProps) {
             </div>
           </Show>
 
-          {lastError() && (
+          <Show when={lastError()}>
             <div class="mb-4">
               <div class="text-xs text-destructive mb-1">Error:</div>
               <div class="text-destructive text-xs">{lastError()}</div>
             </div>
-          )}
+          </Show>
 
-          {props.sqlResults() && (
+          <Show when={props.sqlResults()}>
             <div>
               <div class="text-xs text-muted-foreground mb-1">Status:</div>
               <div class="text-primary">{props.sqlResults()}</div>
             </div>
-          )}
+          </Show>
 
-          {!props.currentStatement() && !props.sqlResults() && !props.sqlQueryResult() && (
+          <Show when={!props.currentStatement() && !props.sqlResults() && !props.sqlQueryResult()}>
             <div class="text-muted-foreground text-xs">
               Press Leader+S to capture current SQL statement<br/>
               Press Leader+E to execute entire file
             </div>
-          )}
+          </Show>
         </CardContent>
       </Card>
     </Show>

@@ -25,6 +25,8 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     let cut_item = MenuItem::with_id(app, "cut", "Cut", true, Some("CmdOrCtrl+X"))?;
     let copy_item = MenuItem::with_id(app, "copy", "Copy", true, Some("CmdOrCtrl+C"))?;
     let paste_item = MenuItem::with_id(app, "paste", "Paste", true, Some("CmdOrCtrl+V"))?;
+    let edit_separator2 = PredefinedMenuItem::separator(app)?;
+    let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+,"))?;
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -36,6 +38,8 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             &cut_item,
             &copy_item,
             &paste_item,
+            &edit_separator2,
+            &settings_item,
         ],
     )?;
 
@@ -79,6 +83,14 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
             "paste" => {
                 // Handled by frontend
+            }
+            "settings" => {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = crate::open_settings_window_impl(app_handle).await {
+                        eprintln!("Failed to open settings window: {}", e);
+                    }
+                });
             }
             _ => {}
         }
