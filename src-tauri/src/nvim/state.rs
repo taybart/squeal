@@ -21,6 +21,15 @@ pub enum NvimEvent {
         statements: Vec<String>,
         mode: String,
     },
+    StateUpdate {
+        content: Vec<String>,
+        mode: String,
+        cursor: (i64, i64),
+        cmdline: String,
+        current_file: String,
+        error: String,
+        visual_selection: Option<((i64, i64), (i64, i64))>,
+    },
 }
 
 pub struct NeovimState {
@@ -96,6 +105,17 @@ pub async fn start_nvim_instance(
                             "mode": mode
                         }),
                     );
+                }
+                NvimEvent::StateUpdate { content, mode, cursor, cmdline, current_file, error, visual_selection } => {
+                    let _ = app_handle_for_events.emit("nvim-state-update", serde_json::json!({
+                        "content": content,
+                        "mode": mode,
+                        "cursor": cursor,
+                        "cmdline": cmdline,
+                        "current_file": current_file,
+                        "error": error,
+                        "visual_selection": visual_selection
+                    }));
                 }
             }
         }
@@ -233,9 +253,107 @@ pub async fn start_nvim_instance(
         nvim,
         nvim_process,
         debug_logs,
-        event_sender,
+        event_sender: event_sender.clone(),
     });
     drop(state_guard);
+
+    // Spawn backend polling task to push updates to frontend
+    let state_for_polling: SharedState = state.clone();
+    let app_handle_for_polling = app_handle.clone();
+    tokio::spawn(async move {
+        let mut last_content = String::new();
+        let mut last_mode = String::new();
+        let mut last_cursor: (i64, i64) = (0, 0);
+        let mut last_file = String::new();
+        
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            
+            let state_guard = state_for_polling.lock().await;
+            if let Some(nvim_state) = state_guard.as_ref() {
+                let nvim = &nvim_state.nvim;
+                
+                // Get all state using nvim API directly for lines
+                let lines_result: Result<Vec<String>, String> = async {
+                    let buf = nvim.get_current_buf().await
+                        .map_err(|e| format!("Failed to get buffer: {}", e))?;
+                    let line_count = buf.line_count().await
+                        .map_err(|e| format!("Failed to get line count: {}", e))?;
+                    
+                    let mut lines = Vec::new();
+                    for i in 0..line_count {
+                        let line = buf.get_lines(i, i + 1, false).await
+                            .map_err(|e| format!("Failed to get line {}: {}", i, e))?;
+                        if let Some(first) = line.first() {
+                            lines.push(first.clone());
+                        }
+                    }
+                    Ok(lines)
+                }.await;
+                let mode_result = nvim.command_output("echo mode()").await;
+                let cursor_result = nvim.command_output("echo line('.') . ',' . col('.')").await;
+                let file_result = nvim.command_output("echo expand('%:t')").await;
+                let cmdline_result = nvim.command_output("echo getcmdline()").await;
+                let error_result = nvim.command_output("echo v:errmsg").await;
+                
+                drop(state_guard);
+                
+                if let (Ok(lines), Ok(mode_str), Ok(cursor_str), Ok(file_str), Ok(cmdline_str), Ok(error_str)) = 
+                    (lines_result, mode_result, cursor_result, file_result, cmdline_result, error_result) {
+                    
+                    let mode = mode_str.trim().to_string();
+                    let file = file_str.trim().to_string();
+                    let cmdline = cmdline_str.trim().to_string();
+                    let error = if error_str.trim() == "v:errmsg" { "".to_string() } else { error_str.trim().to_string() };
+                    
+                    // Parse cursor position
+                    let cursor_parts: Vec<&str> = cursor_str.trim().split(',').collect();
+                    let cursor = if cursor_parts.len() == 2 {
+                        let row = cursor_parts[0].parse::<i64>().unwrap_or(1) - 1;
+                        let col = cursor_parts[1].parse::<i64>().unwrap_or(0) - 1;
+                        (row, col)
+                    } else {
+                        (0, 0)
+                    };
+                    
+                    // Join for change detection comparison
+                    let content_joined = lines.join("\n");
+                    
+                    // Check if anything changed
+                    let content_changed = content_joined != last_content;
+                    let mode_changed = mode != last_mode;
+                    let cursor_changed = cursor != last_cursor;
+                    let file_changed = file != last_file;
+                    
+                    if content_changed || mode_changed || cursor_changed || file_changed {
+                        // Send StateUpdate event
+                        let result = app_handle_for_polling.emit("nvim-state-update", serde_json::json!({
+                            "content": lines,
+                            "mode": mode,
+                            "cursor": cursor,
+                            "cmdline": cmdline,
+                            "current_file": file,
+                            "error": error,
+                            "visual_selection": null // TODO: Add visual selection support
+                        }));
+                        
+                        if let Err(e) = result {
+                            eprintln!("Poller - failed to emit event: {:?}", e);
+                        }
+                        
+                        // Update last known values
+                        if content_changed { last_content = content_joined; }
+                        if mode_changed { last_mode = mode; }
+                        if cursor_changed { last_cursor = cursor; }
+                        if file_changed { last_file = file; }
+                    }
+                }
+            } else {
+                // Nvim not initialized, stop polling
+                break;
+            }
+        }
+    });
 
     Ok(())
 }

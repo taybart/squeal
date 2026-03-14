@@ -2,6 +2,16 @@ import { createSignal, createEffect, onMount } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 
+interface NvimStateUpdate {
+  content: string[]
+  mode: string
+  cursor: [number, number]
+  cmdline: string
+  current_file: string
+  error: string
+  visual_selection: [[number, number], [number, number]] | null
+}
+
 export function useNvim() {
   const [content, setContent] = createSignal<string>("")
   const [connected, setConnected] = createSignal(false)
@@ -23,6 +33,7 @@ export function useNvim() {
       await invoke("start_nvim", { filePath: "test.sql" })
       setConnected(true)
 
+      // Get initial state
       const [lines, m, pos] = await Promise.all([
         invoke<string[]>("get_buffer_content"),
         invoke<string>("get_mode"),
@@ -46,18 +57,7 @@ export function useNvim() {
 
     try {
       await invoke("send_keys", { keys })
-
-      const [lines, m, pos, cmd] = await Promise.all([
-        invoke<string[]>("get_buffer_content"),
-        invoke<string>("get_mode"),
-        invoke<[number, number]>("get_cursor"),
-        invoke<string>("get_cmdline")
-      ])
-
-      setContent(lines.join("\n"))
-      setMode(m)
-      setCursor(pos)
-      setCmdline(cmd)
+      // Backend will push updates via events, no need to poll
     } catch (err) {
       console.error("Failed to send key:", err)
     }
@@ -67,56 +67,45 @@ export function useNvim() {
     initNeovim()
   })
 
+  // Listen for state updates from backend (pushed via Tauri events)
   createEffect(() => {
     if (!connected()) return
 
-    const interval = setInterval(async () => {
-      try {
-        const [lines, m, pos, cmd, file, err, vis] = await Promise.all([
-          invoke<string[]>("get_buffer_content"),
-          invoke<string>("get_mode"),
-          invoke<[number, number]>("get_cursor"),
-          invoke<string>("get_cmdline"),
-          invoke<string>("get_current_file"),
-          invoke<string>("get_last_error"),
-          invoke<[[number, number], [number, number]] | null>("get_visual_selection")
-        ])
+    console.log("Setting up nvim-state-update listener")
 
-        const newContent = lines.join("\n")
-        if (newContent !== content()) {
-          setContent(newContent)
-        }
-        setMode(m)
-        setCursor(pos)
-        if (vis !== visualSelection()) {
-          setVisualSelection(vis)
-        }
-        setCmdline(cmd)
-        if (file && file !== "") {
-          setCurrentFile(file)
-        }
-        if (err && err !== "") {
-          setNvimError(err)
-        } else {
-          setNvimError("")
-        }
-      } catch (e) {
-        // Ignore errors
+    const unlisten = listen("nvim-state-update", (event) => {
+      console.log("Received nvim-state-update event:", event.payload)
+      const data = event.payload as NvimStateUpdate
+      
+      setContent(data.content.join("\n"))
+      setMode(data.mode)
+      setCursor(data.cursor)
+      setCmdline(data.cmdline)
+      setVisualSelection(data.visual_selection)
+      
+      if (data.current_file && data.current_file !== "") {
+        setCurrentFile(data.current_file)
       }
-    }, 100)
+      
+      if (data.error && data.error !== "") {
+        setNvimError(data.error)
+      } else {
+        setNvimError("")
+      }
+    })
 
-    return () => clearInterval(interval)
+    return () => {
+      unlisten.then(fn => fn())
+    }
   })
 
+  // Also listen for file-opened events from menu
   createEffect(() => {
     if (!connected()) return
 
     const unlisten = listen("file-opened", (event) => {
       const filename = event.payload as string
       setCurrentFile(filename)
-      invoke<string[]>("get_buffer_content").then(lines => {
-        setContent(lines.join("\n"))
-      })
     })
 
     return () => {
