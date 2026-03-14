@@ -1,16 +1,16 @@
 import { createSignal, createEffect } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
-import { useNvim } from "./hooks/useNvim"
-import { useKeyBuffer } from "./hooks/useKeyBuffer"
-import { useSql } from "./hooks/useSql"
-import { useConnections } from "./hooks/useConnections"
-import { Editor } from "./components/Editor"
-import { StatusBar } from "./components/StatusBar"
-import { SQLPanel } from "./components/SQLPanel"
-import { DebugPanel } from "./components/DebugPanel"
-import { ConnectionManager } from "./components/ConnectionManager"
-import { TableExplorer } from "./components/TableExplorer"
-import "./App.css"
+import { useNvim } from "~/hooks/useNvim"
+import { useKeyBuffer } from "~/hooks/useKeyBuffer"
+import { useSql } from "~/hooks/useSql"
+import { useConnections } from "~/hooks/useConnections"
+import { Editor } from "~/components/Editor"
+import { StatusBar } from "~/components/StatusBar"
+import { SQLPanel } from "~/components/SQLPanel"
+import { DebugPanel } from "~/components/DebugPanel"
+import { ConnectionManager } from "~/components/ConnectionManager"
+import { TableExplorer } from "~/components/TableExplorer"
+import "~/App.css"
 
 function App() {
   const [error] = createSignal<string | null>(null)
@@ -20,6 +20,7 @@ function App() {
   const [showExplorer, setShowExplorer] = createSignal(false)
   const [currentQueryTable, setCurrentQueryTable] = createSignal<string | null>(null)
   const [currentQueryPrimaryKey, setCurrentQueryPrimaryKey] = createSignal<string | null>(null)
+  const [focusedPanel, setFocusedPanel] = createSignal<'editor' | 'results'>('editor')
 
   const {
     connected,
@@ -143,6 +144,27 @@ function App() {
 
   const handleEditorKeyDown = (e: KeyboardEvent) => {
     if (!connected()) return
+
+    // Panel navigation: Ctrl+J to go to results panel
+    if (e.ctrlKey && e.key === "j") {
+      e.preventDefault()
+      if (showResults()) {
+        setFocusedPanel('results')
+      }
+      return
+    }
+
+    // Panel navigation: Ctrl+K to go to editor panel  
+    if (e.ctrlKey && e.key === "k") {
+      e.preventDefault()
+      setFocusedPanel('editor')
+      return
+    }
+
+    // If results panel is focused, don't send keys to nvim
+    if (focusedPanel() === 'results') {
+      return
+    }
 
     // Toggle debug panel with Ctrl+D
     if (e.ctrlKey && e.key === "d") {
@@ -343,13 +365,19 @@ function App() {
         sqlQueryResult={sqlQueryResult}
         showResults={showResults}
         hasSelectedConnection={() => !!selectedConnection()}
-        onClose={() => setShowResults(false)}
+        onClose={() => {
+          setShowResults(false)
+          setFocusedPanel('editor')
+        }}
         onExecute={handleExecuteSql}
         tableName={currentQueryTable}
         primaryKeyColumn={currentQueryPrimaryKey}
         connectionId={selectedConnection}
         executeSql={executeSql}
         updateRow={updateRow}
+        isFocused={() => focusedPanel() === 'results'}
+        onFocus={() => setFocusedPanel('results')}
+        onBlur={() => setFocusedPanel('editor')}
       />
 
       {displayError() && (

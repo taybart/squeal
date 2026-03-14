@@ -1,4 +1,4 @@
-import { createSignal, For, Show, createEffect } from "solid-js"
+import { createSignal, For, Show, createEffect, onMount } from "solid-js"
 
 interface SQLPanelProps {
   currentStatement: () => string
@@ -20,6 +20,9 @@ interface SQLPanelProps {
     primaryKeyColumn: string,
     primaryKeyValue: any
   ) => Promise<{ rows_affected: number }>
+  isFocused: () => boolean
+  onFocus: () => void
+  onBlur: () => void
 }
 
 export function SQLPanel(props: SQLPanelProps) {
@@ -27,11 +30,81 @@ export function SQLPanel(props: SQLPanelProps) {
   const [editValue, setEditValue] = createSignal<string>("")
   const [isUpdating, setIsUpdating] = createSignal(false)
   const [lastError, setLastError] = createSignal<string | null>(null)
+  
+  // Navigation state
+  const [selectedRow, setSelectedRow] = createSignal<number>(0)
+  const [selectedCol, setSelectedCol] = createSignal<number>(0)
+  const [columns, setColumns] = createSignal<string[]>([])
 
-  // Clear error when query result changes
+  // Clear error when query result changes and reset navigation
   createEffect(() => {
-    props.sqlQueryResult()
+    const result = props.sqlQueryResult()
     setLastError(null)
+    setEditingCell(null)
+    setSelectedRow(0)
+    setSelectedCol(0)
+    
+    if (Array.isArray(result) && result.length > 0) {
+      setColumns(Object.keys(result[0]))
+    } else {
+      setColumns([])
+    }
+  })
+
+  // Handle keyboard navigation when panel is focused
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!props.isFocused()) return
+    if (editingCell()) return // Don't navigate while editing
+
+    const result = props.sqlQueryResult()
+    if (!Array.isArray(result) || result.length === 0) return
+
+    const cols = columns()
+    const maxRow = result.length - 1
+    const maxCol = cols.length - 1
+
+    switch (e.key) {
+      case 'j':
+      case 'ArrowDown':
+        e.preventDefault()
+        setSelectedRow(r => Math.min(r + 1, maxRow))
+        break
+      case 'k':
+      case 'ArrowUp':
+        e.preventDefault()
+        setSelectedRow(r => Math.max(r - 1, 0))
+        break
+      case 'h':
+      case 'ArrowLeft':
+        e.preventDefault()
+        setSelectedCol(c => Math.max(c - 1, 0))
+        break
+      case 'l':
+      case 'ArrowRight':
+        e.preventDefault()
+        setSelectedCol(c => Math.min(c + 1, maxCol))
+        break
+      case 'Enter':
+        e.preventDefault()
+        // Start editing the selected cell
+        const row = result[selectedRow()]
+        const col = cols[selectedCol()]
+        if (row && col && isEditable() && col !== props.primaryKeyColumn()) {
+          handleCellDoubleClick(selectedRow(), col, row[col])
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        props.onBlur() // Return focus to editor
+        break
+    }
+  }
+
+  // Attach/detach keydown listener based on focus
+  onMount(() => {
+    const listener = (e: KeyboardEvent) => handleKeyDown(e)
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
   })
 
   const isEditable = () => {
@@ -115,7 +188,6 @@ export function SQLPanel(props: SQLPanelProps) {
         if (stmt) {
           const refreshedResult = await props.executeSql(connId, stmt)
           // Update the parent component's result
-          // We need to trigger a refresh - using a custom event or callback
           window.dispatchEvent(new CustomEvent('sql-result-refreshed', { detail: refreshedResult }))
         }
         setEditingCell(null)
@@ -140,7 +212,7 @@ export function SQLPanel(props: SQLPanelProps) {
         return <div class="text-gray-400 text-xs">No rows returned</div>
       }
 
-      const columns = Object.keys(result[0])
+      const cols = Object.keys(result[0])
       const pkColumn = props.primaryKeyColumn()
       const editable = isEditable()
 
@@ -149,9 +221,11 @@ export function SQLPanel(props: SQLPanelProps) {
           <table class="w-full text-xs border-collapse">
             <thead>
               <tr class="bg-gray-700">
-                <For each={columns}>
-                  {(col) => (
-                    <th class="text-left p-2 border border-gray-600 text-gray-300">
+                <For each={cols}>
+                  {(col, colIndex) => (
+                    <th class={`text-left p-2 border border-gray-600 text-gray-300 ${
+                      props.isFocused() && selectedCol() === colIndex() ? 'bg-gray-600' : ''
+                    }`}>
                       {col}
                       {col === pkColumn && <span class="text-yellow-500 ml-1">(PK)</span>}
                     </th>
@@ -162,22 +236,35 @@ export function SQLPanel(props: SQLPanelProps) {
             <tbody>
               <For each={result}>
                 {(row, rowIndex) => (
-                  <tr class="hover:bg-gray-700">
-                    <For each={columns}>
-                      {(col) => {
+                  <tr class={`hover:bg-gray-700 ${
+                    props.isFocused() && selectedRow() === rowIndex() ? 'bg-blue-900' : ''
+                  }`}>
+                    <For each={cols}>
+                      {(col, colIndex) => {
                         const isEditing = () => 
                           editingCell()?.rowIndex === rowIndex() && 
                           editingCell()?.columnName === col
                         
                         const canEdit = () => editable && col !== pkColumn
+                        const isSelected = () => 
+                          props.isFocused() && 
+                          selectedRow() === rowIndex() && 
+                          selectedCol() === colIndex()
 
                         return (
                           <td 
                             class={`p-2 border border-gray-600 text-gray-300 ${
                               canEdit() ? 'cursor-pointer hover:bg-gray-600' : ''
-                            } ${isEditing() ? 'bg-blue-900' : ''}`}
+                            } ${isEditing() ? 'bg-blue-800' : ''} ${
+                              isSelected() && !isEditing() ? 'ring-2 ring-blue-400 ring-inset' : ''
+                            }`}
                             onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[col])}
-                            title={canEdit() ? "Double-click to edit" : undefined}
+                            onClick={() => {
+                              setSelectedRow(rowIndex())
+                              setSelectedCol(colIndex())
+                              props.onFocus()
+                            }}
+                            title={canEdit() ? "Double-click to edit, or press Enter when selected" : undefined}
                           >
                             <Show when={isEditing()} fallback={
                               <>
@@ -216,9 +303,14 @@ export function SQLPanel(props: SQLPanelProps) {
             </tbody>
           </table>
           
-          {editable && (
+          {editable && props.isFocused() && (
             <div class="mt-2 text-xs text-gray-400">
-              Double-click cells to edit. Press Enter to save, Escape to cancel.
+              j/k: move up/down • h/l: move left/right • Enter: edit • Esc: back to editor
+            </div>
+          )}
+          {editable && !props.isFocused() && (
+            <div class="mt-2 text-xs text-gray-400">
+              Double-click cells to edit • Ctrl+J to focus results
             </div>
           )}
         </div>
@@ -236,9 +328,17 @@ export function SQLPanel(props: SQLPanelProps) {
 
   return (
     <Show when={props.showResults()}>
-      <div class="bg-gray-800 border-t border-gray-700 flex flex-col" style={{ height: '300px' }}>
+      <div 
+        class={`bg-gray-800 border-t border-gray-700 flex flex-col ${
+          props.isFocused() ? 'ring-2 ring-blue-500 ring-inset' : ''
+        }`} 
+        style={{ height: '300px' }}
+        onClick={props.onFocus}
+      >
       <div class="p-2 bg-gray-900 text-white text-xs font-bold border-b border-gray-700 flex justify-between items-center">
-        <span>SQL Statement / Results</span>
+        <span class={props.isFocused() ? 'text-blue-400' : ''}>
+          SQL Statement / Results {props.isFocused() && '(focused)'}
+        </span>
         <div class="flex items-center gap-2">
           {props.currentStatement() && (
             <button 
@@ -309,11 +409,4 @@ export function SQLPanel(props: SQLPanelProps) {
       </div>
     </Show>
   )
-}
-
-// Listen for refresh events
-if (typeof window !== 'undefined') {
-  window.addEventListener('sql-result-refreshed', ((_e: CustomEvent) => {
-    // This is handled by the parent component
-  }) as EventListener)
 }
