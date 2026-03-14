@@ -61,6 +61,12 @@ export function SQLPanel(props: SQLPanelProps) {
   const [isResizing, setIsResizing] = createSignal<boolean>(false)
   const [startY, setStartY] = createSignal<number>(0)
   const [startHeight, setStartHeight] = createSignal<number>(300)
+  
+  // Resizable column state
+  const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({})
+  const [resizingCol, setResizingCol] = createSignal<string | null>(null)
+  const [resizeStartX, setResizeStartX] = createSignal<number>(0)
+  const [resizeStartWidth, setResizeStartWidth] = createSignal<number>(0)
 
   // Clear error when query result changes and reset navigation
   createEffect(() => {
@@ -156,10 +162,38 @@ export function SQLPanel(props: SQLPanelProps) {
     setIsResizing(false)
   }
 
+  // Column resize handlers
+  const handleColResizeStart = (col: string, e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizingCol(col)
+    setResizeStartX(e.clientX)
+    setResizeStartWidth(columnWidths()[col] || 120)
+  }
+
+  const handleColResizeMove = (e: MouseEvent) => {
+    const col = resizingCol()
+    if (!col) return
+    
+    const delta = e.clientX - resizeStartX()
+    const newWidth = Math.max(50, resizeStartWidth() + delta)
+    setColumnWidths(prev => ({ ...prev, [col]: newWidth }))
+  }
+
+  const handleColResizeEnd = () => {
+    setResizingCol(null)
+  }
+
   // Attach resize listeners
   onMount(() => {
-    const moveListener = (e: MouseEvent) => handleResizeMove(e)
-    const upListener = () => handleResizeEnd()
+    const moveListener = (e: MouseEvent) => {
+      handleResizeMove(e)
+      handleColResizeMove(e)
+    }
+    const upListener = () => {
+      handleResizeEnd()
+      handleColResizeEnd()
+    }
     window.addEventListener('mousemove', moveListener)
     window.addEventListener('mouseup', upListener)
     return () => {
@@ -262,19 +296,33 @@ export function SQLPanel(props: SQLPanelProps) {
       const cols = Object.keys(result[0])
       const pkColumn = props.primaryKeyColumn()
       const editable = isEditable()
+      const widths = columnWidths()
 
       return (
-        <div class="overflow-auto">
+        <div class={`overflow-auto ${resizingCol() ? 'cursor-col-resize' : ''}`}>
           <Table>
             <TableHeader>
               <TableRow>
                 <For each={cols}>
                   {(col, colIndex) => (
-                    <TableHead class={props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}>
-                      {col}
-                      <Show when={col === pkColumn}>
-                        <Badge variant="default" class="ml-1">PK</Badge>
-                      </Show>
+                    <TableHead 
+                      class={`relative ${props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}`}
+                      style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
+                    >
+                      <div class="flex items-center justify-between pr-3">
+                        <span class="truncate">{col}</span>
+                        <Show when={col === pkColumn}>
+                          <Badge variant="default" class="ml-1 shrink-0">PK</Badge>
+                        </Show>
+                      </div>
+                      {/* Resize handle */}
+                      <div
+                        class="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/30 transition-colors flex items-center justify-center"
+                        onMouseDown={(e) => handleColResizeStart(col, e)}
+                        title="Drag to resize column"
+                      >
+                        <div class="w-0.5 h-4 bg-border hover:bg-primary/50" />
+                      </div>
                     </TableHead>
                   )}
                 </For>
@@ -301,6 +349,7 @@ export function SQLPanel(props: SQLPanelProps) {
                             class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${
                               isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
                             }`}
+                            style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
                             onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[col])}
                             onClick={() => {
                               setSelectedRow(rowIndex())
