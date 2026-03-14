@@ -32,6 +32,7 @@ export function useSql(connected: () => boolean) {
 
   return {
     currentStatement,
+    setCurrentStatement,
     sqlResults,
     showResults,
     setShowResults

@@ -1,17 +1,23 @@
-import { createSignal } from "solid-js"
+import { createSignal, createEffect } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
 import { useNvim } from "./hooks/useNvim"
 import { useKeyBuffer } from "./hooks/useKeyBuffer"
 import { useSql } from "./hooks/useSql"
+import { useConnections } from "./hooks/useConnections"
 import { Editor } from "./components/Editor"
 import { StatusBar } from "./components/StatusBar"
 import { SQLPanel } from "./components/SQLPanel"
 import { DebugPanel } from "./components/DebugPanel"
+import { ConnectionManager } from "./components/ConnectionManager"
+import { TableExplorer } from "./components/TableExplorer"
 import "./App.css"
 
 function App() {
   const [error] = createSignal<string | null>(null)
   const [showDebug, setShowDebug] = createSignal(false)
+  const [sqlQueryResult, setSqlQueryResult] = createSignal<any>(null)
+  const [showConnections, setShowConnections] = createSignal(true)
+  const [showExplorer, setShowExplorer] = createSignal(false)
 
   const {
     connected,
@@ -31,8 +37,67 @@ function App() {
     currentStatement,
     sqlResults,
     showResults,
-    setShowResults
+    setShowResults,
+    setCurrentStatement
   } = useSql(connected)
+
+  const {
+    selectedConnection,
+    setSelectedConnection,
+    connections,
+    addConnection,
+    deleteConnection,
+    testConnection,
+    executeSql,
+    listTables,
+    getTableSchema,
+    isLoading,
+    error: connError,
+  } = useConnections()
+
+  // Load SQL query result when statement changes
+  createEffect(() => {
+    setSqlQueryResult(null)
+  })
+
+  const handleRunLine = async () => {
+    // First check if we have a connection selected
+    const connId = selectedConnection()
+    if (!connId) {
+      // Show connections panel if no connection selected
+      setShowConnections(true)
+      return
+    }
+    
+    try {
+      // Capture the SQL statement
+      const stmt = await invoke<string>("capture_sql_statement")
+      if (!stmt || stmt === "nil") {
+        console.error("No SQL statement found under cursor")
+        return
+      }
+      
+      setCurrentStatement(stmt)
+      setShowResults(true)
+      
+      // Execute it immediately
+      const result = await executeSql(connId, stmt)
+      setSqlQueryResult(result)
+      console.log("Run Line result:", result)
+    } catch (e) {
+      console.error("Failed to run line:", e)
+    }
+  }
+
+  const handleExecuteFile = async () => {
+    try {
+      const stmts = await invoke<string[]>("get_all_sql_statements")
+      console.log("Statements to execute:", stmts)
+      setShowResults(true)
+    } catch (e) {
+      console.error("Failed to get statements:", e)
+    }
+  }
 
   const handleEditorKeyDown = (e: KeyboardEvent) => {
     if (!connected()) return
@@ -41,6 +106,20 @@ function App() {
     if (e.ctrlKey && e.key === "d") {
       e.preventDefault()
       setShowDebug(!showDebug())
+      return
+    }
+
+    // Execute line under cursor with Ctrl+E
+    if (e.ctrlKey && e.key === "e" && !e.shiftKey) {
+      e.preventDefault()
+      handleRunLine()
+      return
+    }
+
+    // Execute entire file with Ctrl+Shift+E
+    if (e.ctrlKey && e.shiftKey && e.key === "E") {
+      e.preventDefault()
+      handleExecuteFile()
       return
     }
 
@@ -111,23 +190,26 @@ function App() {
     }
   }
 
-  const handleCaptureSql = async () => {
-    try {
-      const stmt = await invoke<string>("capture_sql_statement")
-      console.log("Captured SQL:", stmt)
-      setShowResults(true)
-    } catch (e) {
-      console.error("Failed to capture SQL:", e)
+  const handleExecuteSql = async () => {
+    const stmt = currentStatement()
+    const connId = selectedConnection()
+    
+    if (!stmt) {
+      console.error("No SQL statement to execute")
+      return
     }
-  }
-
-  const handleExecuteFile = async () => {
+    
+    if (!connId) {
+      console.error("No connection selected")
+      return
+    }
+    
     try {
-      const stmts = await invoke<string[]>("get_all_sql_statements")
-      console.log("Statements to execute:", stmts)
-      setShowResults(true)
+      const result = await executeSql(connId, stmt)
+      setSqlQueryResult(result)
+      console.log("Query result:", result)
     } catch (e) {
-      console.error("Failed to get statements:", e)
+      console.error("Failed to execute SQL:", e)
     }
   }
 
@@ -135,6 +217,9 @@ function App() {
     const m = mode()
     return m === "c" || m.startsWith("c")
   }
+
+  // Combine nvim error and connection error
+  const displayError = () => nvimError() || connError()
 
   return (
     <main class="h-full w-full flex flex-col">
@@ -146,7 +231,8 @@ function App() {
         error={error}
         onToggleDebug={() => setShowDebug(!showDebug())}
         onToggleResults={() => setShowResults(!showResults())}
-        onCaptureSql={handleCaptureSql}
+        onToggleExplorer={() => setShowExplorer(!showExplorer())}
+        onRunLine={handleRunLine}
         onExecuteFile={handleExecuteFile}
         hasStatement={() => !!currentStatement()}
       />
@@ -166,6 +252,39 @@ function App() {
         </div>
 
         <DebugPanel visible={showDebug} connected={connected} />
+        <ConnectionManager 
+          visible={showConnections} 
+          connections={connections}
+          selectedConnection={selectedConnection}
+          setSelectedConnection={setSelectedConnection}
+          addConnection={addConnection}
+          deleteConnection={deleteConnection}
+          testConnection={testConnection}
+          isLoading={isLoading}
+          onSelect={() => setShowConnections(false)} 
+        />
+        <TableExplorer
+          visible={showExplorer}
+          selectedConnection={selectedConnection}
+          listTables={listTables}
+          getTableSchema={getTableSchema}
+          onClose={() => setShowExplorer(false)}
+          onExecuteTable={(tableName) => {
+            // Execute SELECT * FROM table immediately
+            const connId = selectedConnection()
+            if (!connId) return
+            
+            const sql = `SELECT * FROM ${tableName} LIMIT 100`
+            setCurrentStatement(sql)
+            setShowResults(true)
+            
+            executeSql(connId, sql).then(result => {
+              setSqlQueryResult(result)
+            }).catch(e => {
+              console.error("Failed to execute table query:", e)
+            })
+          }}
+        />
       </div>
 
       {isCommandMode() && (
@@ -179,14 +298,16 @@ function App() {
       <SQLPanel
         currentStatement={currentStatement}
         sqlResults={sqlResults}
+        sqlQueryResult={sqlQueryResult}
         showResults={showResults}
+        hasSelectedConnection={() => !!selectedConnection()}
         onClose={() => setShowResults(false)}
-        onExecute={() => console.log("Execute:", currentStatement())}
+        onExecute={handleExecuteSql}
       />
 
-      {nvimError() && (
+      {displayError() && (
         <div class="bg-red-900 border-t border-red-700 p-2 font-mono text-sm text-red-100">
-          <span class="font-bold">E:</span> {nvimError()}
+          <span class="font-bold">E:</span> {displayError()}
         </div>
       )}
 

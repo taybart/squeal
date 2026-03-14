@@ -6,7 +6,8 @@ interface StatusBarProps {
   error: () => string | null
   onToggleDebug: () => void
   onToggleResults: () => void
-  onCaptureSql: () => void
+  onToggleExplorer: () => void
+  onRunLine: () => void
   onExecuteFile: () => void
   hasStatement: () => boolean
 }
@@ -43,11 +44,17 @@ export function StatusBar(props: StatusBarProps) {
           Toggle SQL
         </button>
         <button
-          onClick={props.onCaptureSql}
-          class="text-xs px-2 py-1 bg-blue-600 text-white hover:bg-blue-500 rounded"
-          title="Get SQL statement under cursor"
+          onClick={props.onToggleExplorer}
+          class="text-xs text-gray-400 hover:text-white"
         >
-          Capture SQL
+          Explorer
+        </button>
+        <button
+          onClick={props.onRunLine}
+          class="text-xs px-2 py-1 bg-blue-600 text-white hover:bg-blue-500 rounded"
+          title="Capture and execute SQL statement under cursor"
+        >
+          Run Line
         </button>
         <button
           onClick={props.onExecuteFile}

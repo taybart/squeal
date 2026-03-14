@@ -1,5 +1,5 @@
 use crate::nvim::handler::NeovimHandler;
-use nvim_rs::{compat::tokio::Compat, create::tokio as create, Neovim, UiAttachOptions};
+use nvim_rs::{compat::tokio::Compat, create::tokio as create, Neovim};
 use std::process::Stdio;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -106,16 +106,27 @@ pub async fn start_nvim_instance(
                         }),
                     );
                 }
-                NvimEvent::StateUpdate { content, mode, cursor, cmdline, current_file, error, visual_selection } => {
-                    let _ = app_handle_for_events.emit("nvim-state-update", serde_json::json!({
-                        "content": content,
-                        "mode": mode,
-                        "cursor": cursor,
-                        "cmdline": cmdline,
-                        "current_file": current_file,
-                        "error": error,
-                        "visual_selection": visual_selection
-                    }));
+                NvimEvent::StateUpdate {
+                    content,
+                    mode,
+                    cursor,
+                    cmdline,
+                    current_file,
+                    error,
+                    visual_selection,
+                } => {
+                    let _ = app_handle_for_events.emit(
+                        "nvim-state-update",
+                        serde_json::json!({
+                            "content": content,
+                            "mode": mode,
+                            "cursor": cursor,
+                            "cmdline": cmdline,
+                            "current_file": current_file,
+                            "error": error,
+                            "visual_selection": visual_selection
+                        }),
+                    );
                 }
             }
         }
@@ -127,16 +138,16 @@ pub async fn start_nvim_instance(
         std::env::current_dir().map_err(|e| format!("Failed to get current dir: {}", e))?;
     let config_dir = current_dir.join("../config");
     let init_lua_path = config_dir.join("init.lua");
-    
+
     // Build runtimepath: include our config dir first, then default paths
     let rtp_cmd = format!("set runtimepath^={}", config_dir.display());
-    
+
     let mut nvim_process = tokio::process::Command::new("nvim")
         .args([
             "--headless",
             "--listen",
             &listen_addr,
-            "--cmd",  // Set runtimepath BEFORE loading init.lua
+            "--cmd", // Set runtimepath BEFORE loading init.lua
             &rtp_cmd,
             "-u",
             &init_lua_path.to_string_lossy(),
@@ -179,7 +190,7 @@ pub async fn start_nvim_instance(
 
     // Spawn the join_handle to process nvim events in the background
     // This is critical - without it, nvim will block when its output buffer fills up
-    tokio::spawn(async move { if let Err(e) = join_handle.await {} });
+    tokio::spawn(async move { if let Err(_e) = join_handle.await {} });
 
     /*
     // Attach UI - this causes nvim to stop responding to commands
@@ -265,47 +276,70 @@ pub async fn start_nvim_instance(
         let mut last_mode = String::new();
         let mut last_cursor: (i64, i64) = (0, 0);
         let mut last_file = String::new();
-        
+
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            
+
             let state_guard = state_for_polling.lock().await;
             if let Some(nvim_state) = state_guard.as_ref() {
                 let nvim = &nvim_state.nvim;
-                
+
                 // Get all state using nvim API directly for lines
                 let lines_result: Result<Vec<String>, String> = async {
-                    let buf = nvim.get_current_buf().await
+                    let buf = nvim
+                        .get_current_buf()
+                        .await
                         .map_err(|e| format!("Failed to get buffer: {}", e))?;
-                    let line_count = buf.line_count().await
+                    let line_count = buf
+                        .line_count()
+                        .await
                         .map_err(|e| format!("Failed to get line count: {}", e))?;
-                    
+
                     let mut lines = Vec::new();
                     for i in 0..line_count {
-                        let line = buf.get_lines(i, i + 1, false).await
+                        let line = buf
+                            .get_lines(i, i + 1, false)
+                            .await
                             .map_err(|e| format!("Failed to get line {}: {}", i, e))?;
                         if let Some(first) = line.first() {
                             lines.push(first.clone());
                         }
                     }
                     Ok(lines)
-                }.await;
+                }
+                .await;
                 let mode_result = nvim.command_output("echo mode()").await;
                 let cursor_result = nvim.command_output("echo line('.') . ',' . col('.')").await;
                 let file_result = nvim.command_output("echo expand('%:t')").await;
                 let cmdline_result = nvim.command_output("echo getcmdline()").await;
                 let error_result = nvim.command_output("echo v:errmsg").await;
-                
+
                 drop(state_guard);
-                
-                if let (Ok(lines), Ok(mode_str), Ok(cursor_str), Ok(file_str), Ok(cmdline_str), Ok(error_str)) = 
-                    (lines_result, mode_result, cursor_result, file_result, cmdline_result, error_result) {
-                    
+
+                if let (
+                    Ok(lines),
+                    Ok(mode_str),
+                    Ok(cursor_str),
+                    Ok(file_str),
+                    Ok(cmdline_str),
+                    Ok(error_str),
+                ) = (
+                    lines_result,
+                    mode_result,
+                    cursor_result,
+                    file_result,
+                    cmdline_result,
+                    error_result,
+                ) {
                     let mode = mode_str.trim().to_string();
                     let file = file_str.trim().to_string();
                     let cmdline = cmdline_str.trim().to_string();
-                    let error = if error_str.trim() == "v:errmsg" { "".to_string() } else { error_str.trim().to_string() };
-                    
+                    let error = if error_str.trim() == "v:errmsg" {
+                        "".to_string()
+                    } else {
+                        error_str.trim().to_string()
+                    };
+
                     // Parse cursor position
                     let cursor_parts: Vec<&str> = cursor_str.trim().split(',').collect();
                     let cursor = if cursor_parts.len() == 2 {
@@ -315,37 +349,48 @@ pub async fn start_nvim_instance(
                     } else {
                         (0, 0)
                     };
-                    
+
                     // Join for change detection comparison
                     let content_joined = lines.join("\n");
-                    
+
                     // Check if anything changed
                     let content_changed = content_joined != last_content;
                     let mode_changed = mode != last_mode;
                     let cursor_changed = cursor != last_cursor;
                     let file_changed = file != last_file;
-                    
+
                     if content_changed || mode_changed || cursor_changed || file_changed {
                         // Send StateUpdate event
-                        let result = app_handle_for_polling.emit("nvim-state-update", serde_json::json!({
-                            "content": lines,
-                            "mode": mode,
-                            "cursor": cursor,
-                            "cmdline": cmdline,
-                            "current_file": file,
-                            "error": error,
-                            "visual_selection": null // TODO: Add visual selection support
-                        }));
-                        
+                        let result = app_handle_for_polling.emit(
+                            "nvim-state-update",
+                            serde_json::json!({
+                                "content": lines,
+                                "mode": mode,
+                                "cursor": cursor,
+                                "cmdline": cmdline,
+                                "current_file": file,
+                                "error": error,
+                                "visual_selection": null // TODO: Add visual selection support
+                            }),
+                        );
+
                         if let Err(e) = result {
                             eprintln!("Poller - failed to emit event: {:?}", e);
                         }
-                        
+
                         // Update last known values
-                        if content_changed { last_content = content_joined; }
-                        if mode_changed { last_mode = mode; }
-                        if cursor_changed { last_cursor = cursor; }
-                        if file_changed { last_file = file; }
+                        if content_changed {
+                            last_content = content_joined;
+                        }
+                        if mode_changed {
+                            last_mode = mode;
+                        }
+                        if cursor_changed {
+                            last_cursor = cursor;
+                        }
+                        if file_changed {
+                            last_file = file;
+                        }
                     }
                 }
             } else {
