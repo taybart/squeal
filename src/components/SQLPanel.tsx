@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "~/components/ui/card"
 import {
   Table,
@@ -56,6 +55,12 @@ export function SQLPanel(props: SQLPanelProps) {
   const [selectedRow, setSelectedRow] = createSignal<number>(0)
   const [selectedCol, setSelectedCol] = createSignal<number>(0)
   const [columns, setColumns] = createSignal<string[]>([])
+  
+  // Resizable panel state
+  const [panelHeight, setPanelHeight] = createSignal<number>(300)
+  const [isResizing, setIsResizing] = createSignal<boolean>(false)
+  const [startY, setStartY] = createSignal<number>(0)
+  const [startHeight, setStartHeight] = createSignal<number>(300)
 
   // Clear error when query result changes and reset navigation
   createEffect(() => {
@@ -130,6 +135,37 @@ export function SQLPanel(props: SQLPanelProps) {
     const listener = (e: KeyboardEvent) => handleKeyDown(e)
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
+  })
+
+  // Resize handlers
+  const handleResizeStart = (e: MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    setStartY(e.clientY)
+    setStartHeight(panelHeight())
+  }
+
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!isResizing()) return
+    const delta = startY() - e.clientY
+    const newHeight = Math.max(150, Math.min(800, startHeight() + delta))
+    setPanelHeight(newHeight)
+  }
+
+  const handleResizeEnd = () => {
+    setIsResizing(false)
+  }
+
+  // Attach resize listeners
+  onMount(() => {
+    const moveListener = (e: MouseEvent) => handleResizeMove(e)
+    const upListener = () => handleResizeEnd()
+    window.addEventListener('mousemove', moveListener)
+    window.addEventListener('mouseup', upListener)
+    return () => {
+      window.removeEventListener('mousemove', moveListener)
+      window.removeEventListener('mouseup', upListener)
+    }
   })
 
   const handleCellDoubleClick = (rowIndex: number, columnName: string, currentValue: any) => {
@@ -339,81 +375,88 @@ export function SQLPanel(props: SQLPanelProps) {
   return (
     <Show when={props.showResults()}>
       <Card 
-        class={`rounded-none border-t border-x-0 border-b-0 ${
+        class={`relative rounded-none border-t border-x-0 border-b-0 flex flex-col ${
           props.isFocused() ? 'ring-2 ring-primary ring-inset' : ''
-        }`}
-        style={{ height: '300px' }}
-        onClick={props.onFocus}
+        } ${isResizing() ? 'select-none' : ''}`}
+        style={{ height: `${panelHeight()}px` }}
       >
-        <CardHeader class="flex flex-row items-center justify-between space-y-0 py-3">
-            <div class="flex items-center gap-2">
-              <CardTitle class={`text-sm ${props.isFocused() ? 'text-primary' : ''}`}>
-                SQL Results {props.isFocused() ? '(focused)' : ''}
-              </CardTitle>
+        {/* Resize handle */}
+        <div
+          class="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-primary/20 transition-colors z-10 flex items-center justify-center"
+          onMouseDown={handleResizeStart}
+          title="Drag to resize"
+        >
+          <div class="w-12 h-1 rounded-full bg-border hover:bg-primary/50 transition-colors" />
+        </div>
+
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 py-1 px-3 pt-3">
+            <div class="flex items-center gap-1.5">
+              <span class={`text-xs font-semibold ${props.isFocused() ? 'text-primary' : ''}`}>
+                Results
+              </span>
               <Show when={props.tableName()}>
-                <Badge variant="outline">{props.tableName()}</Badge>
+                <Badge variant="outline" class="text-[10px] px-1.5 py-0 h-5">{props.tableName()}</Badge>
               </Show>
               <Show when={props.primaryKeyColumn()}>
-                <Badge variant="default" class="text-[10px]">PK: {props.primaryKeyColumn()}</Badge>
+                <Badge variant="default" class="text-[9px] px-1.5 py-0 h-4">PK</Badge>
               </Show>
               <Show when={editingCell()}>
-                <Badge variant="secondary" class="text-[10px] animate-pulse">editing...</Badge>
+                <Badge variant="secondary" class="text-[9px] animate-pulse px-1.5 py-0 h-4">edit</Badge>
               </Show>
             </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1">
             <Show when={props.currentStatement()}>
               <Button 
                 onClick={props.onExecute}
                 disabled={!props.hasSelectedConnection() || !!editingCell()}
                 size="sm"
                 variant={props.hasSelectedConnection() ? "default" : "secondary"}
+                class="h-6 text-xs px-2"
               >
-                Execute
+                Run
               </Button>
             </Show>
             <Button 
               variant="ghost" 
               size="icon"
-              class="h-8 w-8"
+              class="h-6 w-6"
               onClick={props.onClose}
             >
-              <span class="text-lg">×</span>
+              <span class="text-sm">×</span>
             </Button>
           </div>
         </CardHeader>
-        <CardContent class="flex-1 overflow-auto pt-0">
+        <CardContent class="flex-1 overflow-auto pt-0 px-3 pb-2" onClick={props.onFocus}>
           <Show when={props.currentStatement()}>
-            <div class="mb-4">
-              <div class="text-xs text-muted-foreground mb-1">Current Statement:</div>
-              <pre class="text-primary bg-muted p-2 rounded text-xs overflow-auto">{props.currentStatement()}</pre>
+            <div class="mb-2">
+              <div class="text-[10px] text-muted-foreground mb-0.5">SQL:</div>
+              <pre class="text-primary bg-muted p-1.5 rounded text-[10px] overflow-auto">{props.currentStatement()}</pre>
             </div>
           </Show>
 
           <Show when={props.sqlQueryResult()}>
-            <div class="mb-4">
-              <div class="text-xs text-muted-foreground mb-1">Query Result:</div>
+            <div class="mb-2">
               {renderQueryResult()}
             </div>
           </Show>
 
           <Show when={lastError()}>
-            <div class="mb-4">
-              <div class="text-xs text-destructive mb-1">Error:</div>
-              <div class="text-destructive text-xs">{lastError()}</div>
+            <div class="mb-2">
+              <div class="text-[10px] text-destructive mb-0.5">Error:</div>
+              <div class="text-destructive text-[10px]">{lastError()}</div>
             </div>
           </Show>
 
           <Show when={props.sqlResults()}>
             <div>
-              <div class="text-xs text-muted-foreground mb-1">Status:</div>
-              <div class="text-primary">{props.sqlResults()}</div>
+              <div class="text-[10px] text-muted-foreground mb-0.5">Status:</div>
+              <div class="text-primary text-[10px]">{props.sqlResults()}</div>
             </div>
           </Show>
 
           <Show when={!props.currentStatement() && !props.sqlResults() && !props.sqlQueryResult()}>
-            <div class="text-muted-foreground text-xs">
-              Press Leader+S to capture current SQL statement<br/>
-              Press Leader+E to execute entire file
+            <div class="text-muted-foreground text-[10px]">
+              Press Leader+S to capture SQL • Leader+E to execute file
             </div>
           </Show>
         </CardContent>
