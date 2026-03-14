@@ -70,13 +70,52 @@ impl Handler for NeovimHandler {
             "sql_statement" => {
                 // SQL statement notification from ftplugin
                 if let Some(Value::Map(data)) = args.first() {
+                    let mut text = String::new();
+                    let mut start_row: i64 = 0;
+                    let mut start_col: i64 = 0;
+                    let mut end_row: i64 = 0;
+                    let mut end_col: i64 = 0;
+                    
                     for (key, value) in data {
-                        if let (Value::String(k), Value::String(v)) = (key, value) {
-                            if k.as_str() == Some("statement") {
-                                let _ = self.event_sender.send(NvimEvent::SqlStatement(v.to_string()));
+                        if let Value::String(k) = key {
+                            match k.as_str() {
+                                Some("text") => {
+                                    if let Value::String(v) = value {
+                                        text = v.to_string();
+                                    }
+                                }
+                                Some("start_row") => {
+                                    if let Value::Integer(v) = value {
+                                        start_row = v.as_i64().unwrap_or(0);
+                                    }
+                                }
+                                Some("start_col") => {
+                                    if let Value::Integer(v) = value {
+                                        start_col = v.as_i64().unwrap_or(0);
+                                    }
+                                }
+                                Some("end_row") => {
+                                    if let Value::Integer(v) = value {
+                                        end_row = v.as_i64().unwrap_or(0);
+                                    }
+                                }
+                                Some("end_col") => {
+                                    if let Value::Integer(v) = value {
+                                        end_col = v.as_i64().unwrap_or(0);
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
+                    
+                    let _ = self.event_sender.send(NvimEvent::SqlStatement {
+                        text,
+                        start_row,
+                        start_col,
+                        end_row,
+                        end_col,
+                    });
                 }
             }
             "sql_execute" => {

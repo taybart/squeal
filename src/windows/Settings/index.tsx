@@ -6,8 +6,8 @@ import {
   ColorModeScript,
   cookieStorageManagerSSR,
 } from "@kobalte/core"
-import { SettingsWindow } from "./components/SettingsWindow"
-import "./App.css"
+import { SettingsWindow } from "~/windows/Settings/View"
+import "~/windows/App/App.css"
 
 render(() => {
   const storageManager = cookieStorageManagerSSR(document.cookie)

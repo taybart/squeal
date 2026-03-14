@@ -1,4 +1,14 @@
 use crate::nvim::state::SharedState;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatementBounds {
+    pub text: String,
+    pub start_row: i64,
+    pub start_col: i64,
+    pub end_row: i64,
+    pub end_col: i64,
+}
 
 #[tauri::command]
 pub async fn start_nvim(
@@ -386,6 +396,35 @@ pub async fn get_all_sql_statements(
             .collect();
         
         Ok(statements)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Get statement bounds under cursor for highlighting
+#[tauri::command]
+pub async fn get_statement_bounds(
+    state: tauri::State<'_, SharedState>,
+) -> Result<Option<StatementBounds>, String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        // Use vim.json.encode to get structured data
+        let result = nvim_state
+            .nvim
+            .command_output("lua print(vim.json.encode(squeal_sql.get_stmt_info_under_cursor()))")
+            .await
+            .map_err(|e| format!("Failed to execute Lua: {}", e))?;
+        
+        let trimmed = result.trim();
+        if trimmed == "null" || trimmed == "nil" || trimmed.is_empty() {
+            return Ok(None);
+        }
+        
+        // Parse the JSON response
+        match serde_json::from_str::<StatementBounds>(trimmed) {
+            Ok(bounds) => Ok(Some(bounds)),
+            Err(e) => Err(format!("Failed to parse statement bounds: {}", e)),
+        }
     } else {
         Err("Neovim not initialized".to_string())
     }

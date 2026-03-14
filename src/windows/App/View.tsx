@@ -11,7 +11,7 @@ import { SQLPanel } from "~/components/SQLPanel"
 import { DebugPanel } from "~/components/DebugPanel"
 import { TableExplorer } from "~/components/TableExplorer"
 import { Toaster } from "~/components/ui/sonner"
-import "~/App.css"
+import "~/windows/App/App.css"
 
 function App() {
   const [error] = createSignal<string | null>(null)
@@ -31,6 +31,7 @@ function App() {
     currentFile,
     nvimError,
     visualSelection,
+    statementBounds,
     sendKey
   } = useNvim()
 
@@ -330,6 +331,7 @@ function App() {
             mode={mode}
             cursor={cursor}
             visualSelection={visualSelection}
+            statementBounds={statementBounds}
             connected={connected}
             onKeyDown={handleEditorKeyDown}
             onPaste={handlePaste}

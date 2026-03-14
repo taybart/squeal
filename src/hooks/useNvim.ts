@@ -2,6 +2,14 @@ import { createSignal, createEffect, onMount } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 
+export interface StatementBounds {
+  text: string
+  start_row: number
+  start_col: number
+  end_row: number
+  end_col: number
+}
+
 interface NvimStateUpdate {
   content: string[]
   mode: string
@@ -10,6 +18,7 @@ interface NvimStateUpdate {
   current_file: string
   error: string
   visual_selection: [[number, number], [number, number]] | null
+  statement_bounds: StatementBounds | null
 }
 
 export function useNvim() {
@@ -19,6 +28,7 @@ export function useNvim() {
   const [mode, setMode] = createSignal<string>("n")
   const [cursor, setCursor] = createSignal<[number, number]>([0, 0])
   const [visualSelection, setVisualSelection] = createSignal<[[number, number], [number, number]] | null>(null)
+  const [statementBounds, setStatementBounds] = createSignal<StatementBounds | null>(null)
   const [cmdline, setCmdline] = createSignal<string>("")
   const [currentFile, setCurrentFile] = createSignal<string>("test.sql")
   const [nvimError, setNvimError] = createSignal<string>("")
@@ -83,8 +93,9 @@ export function useNvim() {
       setContent(data.content.join("\n"))
       setMode(data.mode)
       setCursor(data.cursor)
-      setCmdline(data.cmdline)
       setVisualSelection(data.visual_selection)
+      setStatementBounds(data.statement_bounds)
+      setCmdline(data.cmdline)
       
       if (data.current_file && data.current_file !== "") {
         setCurrentFile(data.current_file)
@@ -125,6 +136,7 @@ export function useNvim() {
     currentFile,
     nvimError,
     visualSelection,
+    statementBounds,
     initNeovim,
     sendKey
   }

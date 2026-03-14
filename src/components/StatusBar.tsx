@@ -2,6 +2,7 @@ import { Show } from "solid-js"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
 import { Separator } from "~/components/ui/separator"
+import ThemeButton from "~/components/Themebutton"
 
 interface StatusBarProps {
   currentFile: () => string
@@ -49,6 +50,7 @@ export function StatusBar(props: StatusBarProps) {
           <Badge variant="destructive">{props.error()}</Badge>
         </Show>
       </div>
+      <ThemeButton />
       <div class="flex items-center gap-2">
         <Button
           variant={props.hasStatement() ? "default" : "ghost"}

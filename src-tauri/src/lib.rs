@@ -123,6 +123,7 @@ pub fn run() {
             nvim::get_last_error,
             nvim::capture_sql_statement,
             nvim::get_all_sql_statements,
+            nvim::get_statement_bounds,
             nvim::open_scratch_buffer,
             nvim::get_scratch_buffer_content,
             nvim::get_scratch_buffer_id,

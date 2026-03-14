@@ -1,6 +1,6 @@
 /* @refresh reload */
 import { render, Suspense } from "solid-js/web"
-import App from "./App"
+import App from "./View"
 import { MetaProvider } from "@solidjs/meta"
 import {
   ColorModeProvider,

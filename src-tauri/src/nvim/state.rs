@@ -16,7 +16,13 @@ pub enum NvimEvent {
     ModeChange(String),
     CursorMove(i64, i64),
     BufUpdate(Vec<String>),
-    SqlStatement(String),
+    SqlStatement {
+        text: String,
+        start_row: i64,
+        start_col: i64,
+        end_row: i64,
+        end_col: i64,
+    },
     SqlExecute {
         statements: Vec<String>,
         mode: String,
@@ -29,6 +35,7 @@ pub enum NvimEvent {
         current_file: String,
         error: String,
         visual_selection: Option<((i64, i64), (i64, i64))>,
+        statement_bounds: Option<crate::nvim::commands::StatementBounds>,
     },
 }
 
@@ -94,8 +101,17 @@ pub async fn start_nvim_instance(
                 NvimEvent::BufUpdate(lines) => {
                     let _ = app_handle_for_events.emit("nvim-buf-update", lines.join("\n"));
                 }
-                NvimEvent::SqlStatement(stmt) => {
-                    let _ = app_handle_for_events.emit("sql-statement", stmt);
+                NvimEvent::SqlStatement { text, start_row, start_col, end_row, end_col } => {
+                    let _ = app_handle_for_events.emit(
+                        "sql-statement",
+                        serde_json::json!({
+                            "text": text,
+                            "start_row": start_row,
+                            "start_col": start_col,
+                            "end_row": end_row,
+                            "end_col": end_col
+                        }),
+                    );
                 }
                 NvimEvent::SqlExecute { statements, mode } => {
                     let _ = app_handle_for_events.emit(
@@ -114,6 +130,7 @@ pub async fn start_nvim_instance(
                     current_file,
                     error,
                     visual_selection,
+                    statement_bounds,
                 } => {
                     let _ = app_handle_for_events.emit(
                         "nvim-state-update",
@@ -124,7 +141,8 @@ pub async fn start_nvim_instance(
                             "cmdline": cmdline,
                             "current_file": current_file,
                             "error": error,
-                            "visual_selection": visual_selection
+                            "visual_selection": visual_selection,
+                            "statement_bounds": statement_bounds
                         }),
                     );
                 }
@@ -276,6 +294,7 @@ pub async fn start_nvim_instance(
         let mut last_mode = String::new();
         let mut last_cursor: (i64, i64) = (0, 0);
         let mut last_file = String::new();
+        let mut last_cmdline = String::new();
 
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -313,6 +332,53 @@ pub async fn start_nvim_instance(
                 let file_result = nvim.command_output("echo expand('%:t')").await;
                 let cmdline_result = nvim.command_output("echo getcmdline()").await;
                 let error_result = nvim.command_output("echo v:errmsg").await;
+
+                // Parse cursor position early to check if we need bounds
+                let cursor_pos = if let Ok(ref cursor_str) = cursor_result {
+                    let cursor_parts: Vec<&str> = cursor_str.trim().split(',').collect();
+                    if cursor_parts.len() == 2 {
+                        let row = cursor_parts[0].parse::<i64>().unwrap_or(1) - 1;
+                        let col = cursor_parts[1].parse::<i64>().unwrap_or(0) - 1;
+                        Some((row, col))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                // Check if cursor changed before dropping state_guard
+                let cursor_changed = cursor_pos.map(|c| c != last_cursor).unwrap_or(false);
+                let content_joined_for_check = if let Ok(ref lines) = lines_result {
+                    lines.join("\n")
+                } else {
+                    String::new()
+                };
+                let content_changed = content_joined_for_check != last_content;
+                
+                // Fetch statement bounds before dropping state_guard (if cursor or content changed)
+                let statement_bounds = if (cursor_changed || content_changed) && cursor_pos.is_some() {
+                    let bounds_result = nvim.command_output(
+                        "lua print(vim.json.encode(squeal_sql.get_stmt_info_under_cursor()))"
+                    ).await;
+                    
+                    match bounds_result {
+                        Ok(bounds_str) => {
+                            let trimmed = bounds_str.trim();
+                            if trimmed != "null" && trimmed != "nil" && !trimmed.is_empty() {
+                                match serde_json::from_str::<crate::nvim::commands::StatementBounds>(trimmed) {
+                                    Ok(bounds) => Some(bounds),
+                                    Err(_) => None,
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
 
                 drop(state_guard);
 
@@ -358,8 +424,9 @@ pub async fn start_nvim_instance(
                     let mode_changed = mode != last_mode;
                     let cursor_changed = cursor != last_cursor;
                     let file_changed = file != last_file;
+                    let cmdline_changed = cmdline != last_cmdline;
 
-                    if content_changed || mode_changed || cursor_changed || file_changed {
+                    if content_changed || mode_changed || cursor_changed || file_changed || cmdline_changed {
                         // Send StateUpdate event
                         let result = app_handle_for_polling.emit(
                             "nvim-state-update",
@@ -370,7 +437,8 @@ pub async fn start_nvim_instance(
                                 "cmdline": cmdline,
                                 "current_file": file,
                                 "error": error,
-                                "visual_selection": null // TODO: Add visual selection support
+                                "visual_selection": null, // TODO: Add visual selection support
+                                "statement_bounds": statement_bounds
                             }),
                         );
 
@@ -390,6 +458,9 @@ pub async fn start_nvim_instance(
                         }
                         if file_changed {
                             last_file = file;
+                        }
+                        if cmdline_changed {
+                            last_cmdline = cmdline;
                         }
                     }
                 }

@@ -1,0 +1,281 @@
+/* Light theme - uses shadcn CSS variables */
+[data-kb-theme='light'] code[class*="language-"],
+[data-kb-theme='light'] pre[class*="language-"] {
+  color: var(--foreground);
+  background: transparent;
+  text-shadow: none;
+  font-family: var(--font-mono);
+  font-size: 1em;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1.5;
+  tab-size: 4;
+  hyphens: none;
+}
+
+[data-kb-theme='light'] pre[class*="language-"] {
+  padding: 1em;
+  margin: 0.5em 0;
+  overflow: auto;
+  border-radius: 0.3em;
+  background: var(--muted);
+}
+
+[data-kb-theme='light'] :not(pre) > code[class*="language-"] {
+  padding: 0.1em;
+  border-radius: 0.3em;
+  white-space: normal;
+  background: var(--muted);
+}
+
+/* Comments - muted/de-emphasized */
+[data-kb-theme='light'] .token.comment,
+[data-kb-theme='light'] .token.prolog,
+[data-kb-theme='light'] .token.doctype,
+[data-kb-theme='light'] .token.cdata {
+  color: var(--muted-foreground);
+}
+
+/* Punctuation - foreground with reduced opacity */
+[data-kb-theme='light'] .token.punctuation {
+  color: var(--foreground);
+  opacity: 0.7;
+}
+
+/* Numbers, booleans, constants - accent color */
+[data-kb-theme='light'] .token.property,
+[data-kb-theme='light'] .token.tag,
+[data-kb-theme='light'] .token.boolean,
+[data-kb-theme='light'] .token.number,
+[data-kb-theme='light'] .token.constant,
+[data-kb-theme='light'] .token.symbol,
+[data-kb-theme='light'] .token.deleted {
+  color: var(--accent);
+}
+
+/* Strings, chars - secondary color */
+[data-kb-theme='light'] .token.selector,
+[data-kb-theme='light'] .token.attr-name,
+[data-kb-theme='light'] .token.string,
+[data-kb-theme='light'] .token.char,
+[data-kb-theme='light'] .token.builtin,
+[data-kb-theme='light'] .token.inserted {
+  color: var(--secondary);
+}
+
+/* Operators - destructive color */
+[data-kb-theme='light'] .token.operator,
+[data-kb-theme='light'] .token.entity,
+[data-kb-theme='light'] .token.url,
+[data-kb-theme='light'] .language-css .token.string,
+[data-kb-theme='light'] .style .token.string {
+  color: var(--destructive);
+}
+
+/* Keywords, atrules - primary color */
+[data-kb-theme='light'] .token.atrule,
+[data-kb-theme='light'] .token.attr-value,
+[data-kb-theme='light'] .token.keyword {
+  color: var(--primary);
+}
+
+/* Functions, class names - chart-3 (accent variant) */
+[data-kb-theme='light'] .token.function,
+[data-kb-theme='light'] .token.class-name {
+  color: var(--chart-3);
+}
+
+/* Regex, variables, important - chart-2 (primary variant) */
+[data-kb-theme='light'] .token.regex,
+[data-kb-theme='light'] .token.important,
+[data-kb-theme='light'] .token.variable {
+  color: var(--chart-2);
+}
+
+/* Dark theme - uses shadcn CSS variables */
+[data-kb-theme='dark'] code[class*="language-"],
+[data-kb-theme='dark'] pre[class*="language-"] {
+  color: var(--foreground);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 1em;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1.5;
+  tab-size: 4;
+  hyphens: none;
+}
+
+[data-kb-theme='dark'] pre[class*="language-"] {
+  padding: 1em;
+  margin: 0.5em 0;
+  overflow: auto;
+  background: var(--muted);
+}
+
+[data-kb-theme='dark'] :not(pre) > code[class*="language-"] {
+  padding: 0.1em;
+  border-radius: 0.3em;
+  white-space: normal;
+  background: var(--muted);
+}
+
+/* Comments - muted/de-emphasized */
+[data-kb-theme='dark'] .token.comment,
+[data-kb-theme='dark'] .token.block-comment,
+[data-kb-theme='dark'] .token.prolog,
+[data-kb-theme='dark'] .token.doctype,
+[data-kb-theme='dark'] .token.cdata {
+  color: var(--muted-foreground);
+}
+
+/* Punctuation - foreground with reduced opacity */
+[data-kb-theme='dark'] .token.punctuation {
+  color: var(--foreground);
+  opacity: 0.7;
+}
+
+/* Tags, attr-names, namespace - secondary color */
+[data-kb-theme='dark'] .token.tag,
+[data-kb-theme='dark'] .token.attr-name,
+[data-kb-theme='dark'] .token.namespace,
+[data-kb-theme='dark'] .token.deleted {
+  color: var(--secondary);
+}
+
+/* Function names - accent color */
+[data-kb-theme='dark'] .token.function-name {
+  color: var(--accent);
+}
+
+/* Booleans, numbers, functions - accent color */
+[data-kb-theme='dark'] .token.boolean,
+[data-kb-theme='dark'] .token.number,
+[data-kb-theme='dark'] .token.function {
+  color: var(--accent);
+}
+
+/* Property, class names, constants, symbols - chart-4 (green variant) */
+[data-kb-theme='dark'] .token.property,
+[data-kb-theme='dark'] .token.class-name,
+[data-kb-theme='dark'] .token.constant,
+[data-kb-theme='dark'] .token.symbol {
+  color: var(--chart-4);
+}
+
+/* Keywords, selectors, atrules, builtin - primary color */
+[data-kb-theme='dark'] .token.selector,
+[data-kb-theme='dark'] .token.important,
+[data-kb-theme='dark'] .token.atrule,
+[data-kb-theme='dark'] .token.keyword,
+[data-kb-theme='dark'] .token.builtin {
+  color: var(--primary);
+}
+
+/* Strings, chars, attr-values, regex, variables - chart-2 (primary variant) */
+[data-kb-theme='dark'] .token.string,
+[data-kb-theme='dark'] .token.char,
+[data-kb-theme='dark'] .token.attr-value,
+[data-kb-theme='dark'] .token.regex,
+[data-kb-theme='dark'] .token.variable {
+  color: var(--chart-2);
+}
+
+/* Operators, entities, urls - destructive color */
+[data-kb-theme='dark'] .token.operator,
+[data-kb-theme='dark'] .token.entity,
+[data-kb-theme='dark'] .token.url {
+  color: var(--destructive);
+}
+
+/* Inserted - success color */
+[data-kb-theme='dark'] .token.inserted {
+  color: var(--chart-4);
+}
+
+/* Cursor styling - highlight only the background, preserve syntax color */
+[data-kb-theme='light'] code.language-sql.cursor,
+[data-kb-theme='dark'] code.language-sql.cursor {
+  /* Don't invert colors - keep Prism's syntax highlighting */
+  background: var(--primary) !important;
+  /* Ensure cursor doesn't change line height */
+  line-height: inherit;
+  vertical-align: bottom;
+}
+
+/* Cursor as inline span within code elements - preserve syntax color */
+[data-kb-theme='light'] code.language-sql span.cursor,
+[data-kb-theme='dark'] code.language-sql span.cursor {
+  /* Don't invert colors - keep Prism's syntax highlighting */
+  background: var(--primary) !important;
+  /* Ensure cursor doesn't affect layout flow */
+  display: inline;
+  line-height: inherit;
+}
+
+/* Selection highlighting */
+[data-kb-theme='light'] code.language-sql.selection,
+[data-kb-theme='dark'] code.language-sql.selection {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Statement under cursor highlighting - subtle accent */
+[data-kb-theme='light'] code.language-sql.statement-highlight,
+[data-kb-theme='dark'] code.language-sql.statement-highlight {
+  background: var(--accent) !important;
+  color: var(--accent-foreground, var(--foreground)) !important;
+}
+
+/* Ensure empty lines have proper height and whitespace is preserved */
+[data-kb-theme='light'] code.language-sql,
+[data-kb-theme='dark'] code.language-sql {
+  display: inline-block;
+  min-height: 1.5em;
+  line-height: 1.5;
+  white-space: pre;
+  vertical-align: bottom;
+}
+
+/* Ensure editor lines maintain their structure */
+[data-kb-theme='light'] code.language-sql.block,
+[data-kb-theme='dark'] code.language-sql.block {
+  display: block;
+  width: 100%;
+}
+
+/* Flex container lines */
+[data-kb-theme='light'] div[class*="flex"],
+[data-kb-theme='dark'] div[class*="flex"] {
+  line-height: 1.5;
+  min-height: 1.5em;
+}
+
+/* Cursor within statement highlight - single character */
+[data-kb-theme='light'] code.language-sql.statement-highlight span.cursor,
+[data-kb-theme='dark'] code.language-sql.statement-highlight span.cursor {
+  color: var(--background) !important;
+  background: var(--foreground) !important;
+}
+
+/* Ensure inline spans within statement highlight flow properly */
+[data-kb-theme='light'] code.language-sql.statement-highlight span,
+[data-kb-theme='dark'] code.language-sql.statement-highlight span {
+  display: inline;
+  white-space: pre;
+}
+
+/* Make leading/trailing spaces visible by using a subtle background hint */
+[data-kb-theme='light'] code.language-sql.statement-highlight {
+  background: oklch(0.8 0.05 84) !important;
+}
+
+[data-kb-theme='dark'] code.language-sql.statement-highlight {
+  background: oklch(0.35 0.05 84) !important;
+}

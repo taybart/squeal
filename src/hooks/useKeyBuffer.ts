@@ -83,7 +83,11 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
     else if (e.key === 'Enter') keys = '<CR>'
     else if (e.key === 'Backspace') keys = '<BS>'
     else if (e.key === 'Delete') keys = '<Del>'
-    else if (e.key === 'Tab') keys = '<Tab>'
+    else if (e.key === 'Tab') {
+      keys = '<Tab>'
+      e.stopPropagation()
+    }
+    else if (e.key === ' ') keys = '<Space>'
     else if (e.key.length === 1) keys = e.key
 
     if (!keys) {

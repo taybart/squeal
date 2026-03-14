@@ -23,12 +23,28 @@ function M.get_stmt_ts_node()
   return nil
 end
 
--- Get text of the statement under cursor
-function M.get_stmt_under_cursor()
+-- Get statement info (text and boundaries) under cursor
+function M.get_stmt_info_under_cursor()
   local node = M.get_stmt_ts_node()
   if not node then return nil end
+  
   local stmt = vim.treesitter.get_node_text(node, 0)
-  return stmt:gsub('\n', ' '):gsub('%s+', ' ') .. ';'
+  local start_row, start_col, end_row, end_col = node:range()
+  
+  return {
+    text = stmt:gsub('\n', ' '):gsub('%s+', ' ') .. ';',
+    start_row = start_row,      -- 0-based
+    start_col = start_col,      -- 0-based
+    end_row = end_row,          -- 0-based, exclusive
+    end_col = end_col           -- 0-based, exclusive
+  }
+end
+
+-- Get text of the statement under cursor (deprecated, use get_stmt_info_under_cursor)
+function M.get_stmt_under_cursor()
+  local info = M.get_stmt_info_under_cursor()
+  if not info then return nil end
+  return info.text
 end
 
 -- Get all statements in the file
@@ -52,15 +68,15 @@ end
 
 -- Execute statement under cursor
 function M.execute_statement()
-  local stmt = M.get_stmt_under_cursor()
-  if not stmt then 
+  local info = M.get_stmt_info_under_cursor()
+  if not info then 
     vim.notify('No SQL statement found under cursor', vim.log.levels.WARN)
     return nil
   end
   
-  -- Send to RPC client
-  vim.rpcnotify(1, 'sql_statement', { statement = stmt })
-  return stmt
+  -- Send to RPC client with statement and boundaries
+  vim.rpcnotify(1, 'sql_statement', info)
+  return info.text
 end
 
 -- Execute all statements in file

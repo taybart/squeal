@@ -1,8 +1,16 @@
 import { createSignal, createEffect } from "solid-js"
 import { listen } from "@tauri-apps/api/event"
 
+export interface StatementBounds {
+  start_row: number
+  start_col: number
+  end_row: number
+  end_col: number
+}
+
 export function useSql(connected: () => boolean) {
   const [currentStatement, setCurrentStatement] = createSignal<string>("")
+  const [currentStatementBounds, setCurrentStatementBounds] = createSignal<StatementBounds | null>(null)
   const [sqlResults, setSqlResults] = createSignal<string>("")
   const [showResults, setShowResults] = createSignal(false)
 
@@ -11,8 +19,20 @@ export function useSql(connected: () => boolean) {
 
     const unlistenStatement = listen("sql-statement", (event) => {
       console.log("Received sql-statement event:", event.payload)
-      const stmt = event.payload as string
-      setCurrentStatement(stmt)
+      const data = event.payload as { 
+        text: string
+        start_row: number
+        start_col: number
+        end_row: number
+        end_col: number
+      }
+      setCurrentStatement(data.text)
+      setCurrentStatementBounds({
+        start_row: data.start_row,
+        start_col: data.start_col,
+        end_row: data.end_row,
+        end_col: data.end_col
+      })
       setShowResults(true)
     })
 
@@ -33,6 +53,8 @@ export function useSql(connected: () => boolean) {
   return {
     currentStatement,
     setCurrentStatement,
+    currentStatementBounds,
+    setCurrentStatementBounds,
     sqlResults,
     showResults,
     setShowResults
