@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+
+:root {
+  --bg: #1e2227;
+  --fg: #ffffff;
+}
+
+html,
+body,
+#root {
+  @apply bg-(--bg) text-(--fg) w-full h-full;
+}
