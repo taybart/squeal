@@ -18,6 +18,8 @@ function App() {
   const [sqlQueryResult, setSqlQueryResult] = createSignal<any>(null)
   const [showConnections, setShowConnections] = createSignal(true)
   const [showExplorer, setShowExplorer] = createSignal(false)
+  const [currentQueryTable, setCurrentQueryTable] = createSignal<string | null>(null)
+  const [currentQueryPrimaryKey, setCurrentQueryPrimaryKey] = createSignal<string | null>(null)
 
   const {
     connected,
@@ -51,6 +53,7 @@ function App() {
     executeSql,
     listTables,
     getTableSchema,
+    updateRow,
     isLoading,
     error: connError,
   } = useConnections()
@@ -58,6 +61,18 @@ function App() {
   // Load SQL query result when statement changes
   createEffect(() => {
     setSqlQueryResult(null)
+  })
+
+  // Listen for SQL result refresh events from SQLPanel (when a cell is edited)
+  createEffect(() => {
+    const handleRefresh = (e: CustomEvent) => {
+      setSqlQueryResult(e.detail)
+    }
+    window.addEventListener('sql-result-refreshed', handleRefresh as EventListener)
+    
+    return () => {
+      window.removeEventListener('sql-result-refreshed', handleRefresh as EventListener)
+    }
   })
 
   const handleRunLine = async () => {
@@ -80,6 +95,19 @@ function App() {
       setCurrentStatement(stmt)
       setShowResults(true)
       
+      // Try to extract table name from simple SELECT queries
+      const tableName = extractTableName(stmt)
+      setCurrentQueryTable(tableName)
+      
+      // If we have a table name, try to get the primary key
+      if (tableName) {
+        const schema = await getTableSchema(connId, tableName)
+        const pkColumn = schema.find(col => col.is_primary_key)
+        setCurrentQueryPrimaryKey(pkColumn?.name || null)
+      } else {
+        setCurrentQueryPrimaryKey(null)
+      }
+      
       // Execute it immediately
       const result = await executeSql(connId, stmt)
       setSqlQueryResult(result)
@@ -87,6 +115,20 @@ function App() {
     } catch (e) {
       console.error("Failed to run line:", e)
     }
+  }
+  
+  // Helper function to extract table name from simple SELECT statements
+  const extractTableName = (sql: string): string | null => {
+    // Match patterns like: SELECT ... FROM table_name, SELECT * FROM table_name, etc.
+    const fromMatch = sql.match(/FROM\s+(\w+)/i)
+    if (fromMatch) {
+      // Check if it's a simple query (no JOIN, GROUP BY, etc.)
+      const upperSql = sql.toUpperCase()
+      if (!upperSql.includes(' JOIN ') && !upperSql.includes(' GROUP BY ') && !upperSql.includes(' UNION ')) {
+        return fromMatch[1]
+      }
+    }
+    return null
   }
 
   const handleExecuteFile = async () => {
@@ -303,6 +345,11 @@ function App() {
         hasSelectedConnection={() => !!selectedConnection()}
         onClose={() => setShowResults(false)}
         onExecute={handleExecuteSql}
+        tableName={currentQueryTable}
+        primaryKeyColumn={currentQueryPrimaryKey}
+        connectionId={selectedConnection}
+        executeSql={executeSql}
+        updateRow={updateRow}
       />
 
       {displayError() && (

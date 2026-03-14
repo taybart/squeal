@@ -295,6 +295,155 @@ pub struct ColumnInfo {
 }
 
 #[tauri::command]
+pub async fn update_row(
+    db_manager: tauri::State<'_, SharedDbManager>,
+    connection_id: i64,
+    table_name: String,
+    column_name: String,
+    new_value: Option<serde_json::Value>,
+    primary_key_column: String,
+    primary_key_value: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = db_manager.lock().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Database not initialized")?;
+    
+    let conn = manager
+        .get_connection(connection_id)
+        .await?
+        .ok_or("Connection not found")?;
+    
+    match conn.db_type.as_str() {
+        "sqlite" => {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect(&conn.connection_string)
+                .await
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            
+            // Build UPDATE statement
+            let sql = format!(
+                "UPDATE {} SET {} = ? WHERE {} = ?",
+                table_name,
+                column_name,
+                primary_key_column
+            );
+            
+            // Bind values - handle different types
+            let mut query = sqlx::query(&sql);
+            
+            // Bind new value
+            if let Some(ref val) = new_value {
+                if val.is_null() {
+                    query = query.bind(None::<Option<String>>);
+                } else if let Some(s) = val.as_str() {
+                    query = query.bind(s);
+                } else if let Some(n) = val.as_i64() {
+                    query = query.bind(n);
+                } else if let Some(n) = val.as_f64() {
+                    query = query.bind(n);
+                } else if let Some(b) = val.as_bool() {
+                    query = query.bind(b);
+                } else {
+                    query = query.bind(val.to_string());
+                }
+            } else {
+                query = query.bind(None::<Option<String>>);
+            }
+            
+            // Bind primary key value
+            if primary_key_value.is_null() {
+                query = query.bind(None::<Option<String>>);
+            } else if let Some(s) = primary_key_value.as_str() {
+                query = query.bind(s);
+            } else if let Some(n) = primary_key_value.as_i64() {
+                query = query.bind(n);
+            } else if let Some(n) = primary_key_value.as_f64() {
+                query = query.bind(n);
+            } else {
+                query = query.bind(primary_key_value.to_string());
+            }
+            
+            // Execute the update
+            let result = query
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("Update failed: {}", e))?;
+            
+            pool.close().await;
+            
+            Ok(serde_json::json!({
+                "rows_affected": result.rows_affected()
+            }))
+        }
+        "postgres" => {
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .connect(&conn.connection_string)
+                .await
+                .map_err(|e| format!("Failed to connect: {}", e))?;
+            
+            // Build UPDATE statement using PostgreSQL parameter syntax
+            let sql = format!(
+                "UPDATE {} SET {} = $1 WHERE {} = $2",
+                table_name,
+                column_name,
+                primary_key_column
+            );
+            
+            // Bind values
+            let mut query = sqlx::query(&sql);
+            
+            // Bind new value
+            if let Some(ref val) = new_value {
+                if val.is_null() {
+                    query = query.bind(None::<Option<String>>);
+                } else if let Some(s) = val.as_str() {
+                    query = query.bind(s);
+                } else if let Some(n) = val.as_i64() {
+                    query = query.bind(n);
+                } else if let Some(n) = val.as_f64() {
+                    query = query.bind(n);
+                } else if let Some(b) = val.as_bool() {
+                    query = query.bind(b);
+                } else {
+                    query = query.bind(val.to_string());
+                }
+            } else {
+                query = query.bind(None::<Option<String>>);
+            }
+            
+            // Bind primary key value
+            if primary_key_value.is_null() {
+                query = query.bind(None::<Option<String>>);
+            } else if let Some(s) = primary_key_value.as_str() {
+                query = query.bind(s);
+            } else if let Some(n) = primary_key_value.as_i64() {
+                query = query.bind(n);
+            } else if let Some(n) = primary_key_value.as_f64() {
+                query = query.bind(n);
+            } else {
+                query = query.bind(primary_key_value.to_string());
+            }
+            
+            // Execute the update
+            let result = query
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("Update failed: {}", e))?;
+            
+            pool.close().await;
+            
+            Ok(serde_json::json!({
+                "rows_affected": result.rows_affected()
+            }))
+        }
+        _ => Err(format!("Unsupported database type: {}", conn.db_type)),
+    }
+}
+
+#[tauri::command]
 pub async fn get_table_schema(
     db_manager: tauri::State<'_, SharedDbManager>,
     connection_id: i64,

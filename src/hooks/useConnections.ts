@@ -149,6 +149,30 @@ export function useConnections() {
     }
   }
 
+  const updateRow = async (
+    connectionId: number,
+    tableName: string,
+    columnName: string,
+    newValue: any,
+    primaryKeyColumn: string,
+    primaryKeyValue: any
+  ): Promise<{ rows_affected: number }> => {
+    try {
+      const result = await invoke<{ rows_affected: number }>("update_row", {
+        connectionId,
+        tableName,
+        columnName,
+        newValue,
+        primaryKeyColumn,
+        primaryKeyValue,
+      })
+      return result
+    } catch (e) {
+      setError(`Update failed: ${e}`)
+      throw e
+    }
+  }
+
   // Load connections on mount
   createEffect(() => {
     loadConnections()
@@ -167,5 +191,6 @@ export function useConnections() {
     executeSql,
     listTables,
     getTableSchema,
+    updateRow,
   }
 }

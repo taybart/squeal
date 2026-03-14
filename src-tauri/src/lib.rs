@@ -91,7 +91,8 @@ pub fn run() {
             db_commands::test_connection,
             db_commands::execute_sql,
             db_commands::list_tables,
-            db_commands::get_table_schema
+            db_commands::get_table_schema,
+            db_commands::update_row
         ])
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
