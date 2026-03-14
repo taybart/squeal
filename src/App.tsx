@@ -10,6 +10,7 @@ import { SQLPanel } from "~/components/SQLPanel"
 import { DebugPanel } from "~/components/DebugPanel"
 import { ConnectionManager } from "~/components/ConnectionManager"
 import { TableExplorer } from "~/components/TableExplorer"
+import { Toaster } from "~/components/ui/sonner"
 import "~/App.css"
 
 function App() {
@@ -70,7 +71,7 @@ function App() {
       setSqlQueryResult(e.detail)
     }
     window.addEventListener('sql-result-refreshed', handleRefresh as EventListener)
-    
+
     return () => {
       window.removeEventListener('sql-result-refreshed', handleRefresh as EventListener)
     }
@@ -84,7 +85,7 @@ function App() {
       setShowConnections(true)
       return
     }
-    
+
     try {
       // Capture the SQL statement
       const stmt = await invoke<string>("capture_sql_statement")
@@ -92,14 +93,14 @@ function App() {
         console.error("No SQL statement found under cursor")
         return
       }
-      
+
       setCurrentStatement(stmt)
       setShowResults(true)
-      
+
       // Try to extract table name from simple SELECT queries
       const tableName = extractTableName(stmt)
       setCurrentQueryTable(tableName)
-      
+
       // If we have a table name, try to get the primary key
       if (tableName) {
         const schema = await getTableSchema(connId, tableName)
@@ -108,7 +109,7 @@ function App() {
       } else {
         setCurrentQueryPrimaryKey(null)
       }
-      
+
       // Execute it immediately
       const result = await executeSql(connId, stmt)
       setSqlQueryResult(result)
@@ -117,7 +118,7 @@ function App() {
       console.error("Failed to run line:", e)
     }
   }
-  
+
   // Helper function to extract table name from simple SELECT statements
   const extractTableName = (sql: string): string | null => {
     // Match patterns like: SELECT ... FROM table_name, SELECT * FROM table_name, etc.
@@ -257,17 +258,17 @@ function App() {
   const handleExecuteSql = async () => {
     const stmt = currentStatement()
     const connId = selectedConnection()
-    
+
     if (!stmt) {
       console.error("No SQL statement to execute")
       return
     }
-    
+
     if (!connId) {
       console.error("No connection selected")
       return
     }
-    
+
     try {
       const result = await executeSql(connId, stmt)
       setSqlQueryResult(result)
@@ -287,6 +288,7 @@ function App() {
 
   return (
     <main class="h-full w-full flex flex-col">
+      <Toaster />
       <StatusBar
         currentFile={currentFile}
         connected={connected}
@@ -316,8 +318,8 @@ function App() {
         </div>
 
         <DebugPanel visible={showDebug} connected={connected} />
-        <ConnectionManager 
-          visible={showConnections} 
+        <ConnectionManager
+          visible={showConnections}
           connections={connections}
           selectedConnection={selectedConnection}
           setSelectedConnection={setSelectedConnection}
@@ -325,7 +327,7 @@ function App() {
           deleteConnection={deleteConnection}
           testConnection={testConnection}
           isLoading={isLoading}
-          onSelect={() => setShowConnections(false)} 
+          onSelect={() => setShowConnections(false)}
         />
         <TableExplorer
           visible={showExplorer}
@@ -337,11 +339,11 @@ function App() {
             // Execute SELECT * FROM table immediately
             const connId = selectedConnection()
             if (!connId) return
-            
+
             const sql = `SELECT * FROM ${tableName} LIMIT 100`
             setCurrentStatement(sql)
             setShowResults(true)
-            
+
             executeSql(connId, sql).then(result => {
               setSqlQueryResult(result)
             }).catch(e => {

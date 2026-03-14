@@ -1,4 +1,26 @@
 import { createSignal, For, Show, createEffect, onMount } from "solid-js"
+import { toast } from "somoto"
+
+import { Badge } from "~/components/ui/badge"
+import { Button } from "~/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table"
+import {
+  TextField,
+  TextFieldInput,
+} from "~/components/ui/text-field"
 
 interface SQLPanelProps {
   currentStatement: () => string
@@ -136,12 +158,14 @@ export function SQLPanel(props: SQLPanelProps) {
 
     if (!connId || !tableName || !pkColumn) {
       setLastError("Cannot save: missing connection or table info")
+      toast.error("Cannot save: missing connection or table info")
       return
     }
 
     const pkValue = row[pkColumn]
     if (pkValue === undefined) {
       setLastError("Cannot save: primary key value not found in row")
+      toast.error("Cannot save: primary key value not found in row")
       return
     }
 
@@ -192,11 +216,16 @@ export function SQLPanel(props: SQLPanelProps) {
         }
         setEditingCell(null)
         setEditValue("")
+        toast.success("Cell updated successfully")
       } else {
-        setLastError(`Update affected ${result.rows_affected} rows (expected 1)`)
+        const errorMsg = `Update affected ${result.rows_affected} rows (expected 1)`
+        setLastError(errorMsg)
+        toast.error(errorMsg)
       }
     } catch (e) {
-      setLastError(String(e))
+      const errorMsg = String(e)
+      setLastError(errorMsg)
+      toast.error(errorMsg)
     } finally {
       setIsUpdating(false)
     }
@@ -209,7 +238,7 @@ export function SQLPanel(props: SQLPanelProps) {
     // Check if it's an array of rows or an object with rows_affected
     if (Array.isArray(result)) {
       if (result.length === 0) {
-        return <div class="text-gray-400 text-xs">No rows returned</div>
+        return <div class="text-muted-foreground text-xs">No rows returned</div>
       }
 
       const cols = Object.keys(result[0])
@@ -218,27 +247,23 @@ export function SQLPanel(props: SQLPanelProps) {
 
       return (
         <div class="overflow-auto">
-          <table class="w-full text-xs border-collapse">
-            <thead>
-              <tr class="bg-gray-700">
+          <Table>
+            <TableHeader>
+              <TableRow>
                 <For each={cols}>
                   {(col, colIndex) => (
-                    <th class={`text-left p-2 border border-gray-600 text-gray-300 ${
-                      props.isFocused() && selectedCol() === colIndex() ? 'bg-gray-600' : ''
-                    }`}>
+                    <TableHead class={props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}>
                       {col}
-                      {col === pkColumn && <span class="text-yellow-500 ml-1">(PK)</span>}
-                    </th>
+                      {col === pkColumn && <Badge variant="default" class="ml-1">PK</Badge>}
+                    </TableHead>
                   )}
                 </For>
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               <For each={result}>
                 {(row, rowIndex) => (
-                  <tr class={`hover:bg-gray-700 ${
-                    props.isFocused() && selectedRow() === rowIndex() ? 'bg-blue-900' : ''
-                  }`}>
+                  <TableRow class={props.isFocused() && selectedRow() === rowIndex() ? 'bg-accent' : ''}>
                     <For each={cols}>
                       {(col, colIndex) => {
                         const isEditing = () => 
@@ -252,11 +277,9 @@ export function SQLPanel(props: SQLPanelProps) {
                           selectedCol() === colIndex()
 
                         return (
-                          <td 
-                            class={`p-2 border border-gray-600 text-gray-300 ${
-                              canEdit() ? 'cursor-pointer hover:bg-gray-600' : ''
-                            } ${isEditing() ? 'bg-blue-800' : ''} ${
-                              isSelected() && !isEditing() ? 'ring-2 ring-blue-400 ring-inset' : ''
+                          <TableCell 
+                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${
+                              isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
                             }`}
                             onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[col])}
                             onClick={() => {
@@ -264,52 +287,52 @@ export function SQLPanel(props: SQLPanelProps) {
                               setSelectedCol(colIndex())
                               props.onFocus()
                             }}
-                            title={canEdit() ? "Double-click to edit, or press Enter when selected" : undefined}
                           >
                             <Show when={isEditing()} fallback={
                               <>
                                 {row[col] === null ? (
-                                  <span class="text-gray-500 italic">NULL</span>
+                                  <span class="text-muted-foreground italic">NULL</span>
                                 ) : (
                                   String(row[col])
                                 )}
                               </>
                             }>
-                              <input
-                                type="text"
-                                value={editValue()}
-                                onInput={(e) => setEditValue(e.currentTarget.value)}
-                                onKeyDown={(e) => handleCellKeyDown(e, rowIndex(), row, col)}
-                                onBlur={() => {
-                                  // Auto-save on blur if value changed
-                                  if (editValue() !== String(row[col] === null ? "" : row[col])) {
-                                    saveCellEdit(rowIndex(), row, col)
-                                  } else {
-                                    setEditingCell(null)
-                                  }
-                                }}
-                                class="w-full bg-gray-800 text-white px-1 py-0.5 text-xs border border-blue-500 outline-none"
-                                disabled={isUpdating()}
-                                autofocus
-                              />
+                              <TextField class="w-full">
+                                <TextFieldInput
+                                  value={editValue()}
+                                  onInput={(e) => setEditValue(e.currentTarget.value)}
+                                  onKeyDown={(e: KeyboardEvent) => handleCellKeyDown(e, rowIndex(), row, col)}
+                                  onBlur={() => {
+                                    // Auto-save on blur if value changed
+                                    if (editValue() !== String(row[col] === null ? "" : row[col])) {
+                                      saveCellEdit(rowIndex(), row, col)
+                                    } else {
+                                      setEditingCell(null)
+                                    }
+                                  }}
+                                  class="w-full rounded-none border-0 border-primary ring-0 focus-visible:ring-0"
+                                  disabled={isUpdating()}
+                                  autofocus
+                                />
+                              </TextField>
                             </Show>
-                          </td>
+                          </TableCell>
                         )
                       }}
                     </For>
-                  </tr>
+                  </TableRow>
                 )}
               </For>
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           
           {editable && props.isFocused() && (
-            <div class="mt-2 text-xs text-gray-400">
+            <div class="mt-2 text-xs text-muted-foreground">
               j/k: move up/down • h/l: move left/right • Enter: edit • Esc: back to editor
             </div>
           )}
           {editable && !props.isFocused() && (
-            <div class="mt-2 text-xs text-gray-400">
+            <div class="mt-2 text-xs text-muted-foreground">
               Double-click cells to edit • Ctrl+J to focus results
             </div>
           )}
@@ -317,96 +340,94 @@ export function SQLPanel(props: SQLPanelProps) {
       )
     } else if (result.rows_affected !== undefined) {
       return (
-        <div class="text-green-300 text-sm">
+        <div class="text-green-500 text-sm">
           {result.rows_affected} row(s) affected
         </div>
       )
     }
 
-    return <div class="text-gray-300 text-xs">{JSON.stringify(result, null, 2)}</div>
+    return <div class="text-muted-foreground text-xs">{JSON.stringify(result, null, 2)}</div>
   }
 
   return (
     <Show when={props.showResults()}>
-      <div 
-        class={`bg-gray-800 border-t border-gray-700 flex flex-col ${
-          props.isFocused() ? 'ring-2 ring-blue-500 ring-inset' : ''
-        }`} 
+      <Card 
+        class={`rounded-none border-t border-x-0 border-b-0 ${
+          props.isFocused() ? 'ring-2 ring-primary ring-inset' : ''
+        }`}
         style={{ height: '300px' }}
         onClick={props.onFocus}
       >
-      <div class="p-2 bg-gray-900 text-white text-xs font-bold border-b border-gray-700 flex justify-between items-center">
-        <span class={props.isFocused() ? 'text-blue-400' : ''}>
-          SQL Statement / Results {props.isFocused() && '(focused)'}
-        </span>
-        <div class="flex items-center gap-2">
-          {props.currentStatement() && (
-            <button 
-              onClick={props.onExecute}
-              disabled={!props.hasSelectedConnection()}
-              class={`px-2 py-1 rounded text-xs ${
-                props.hasSelectedConnection()
-                  ? 'bg-green-600 hover:bg-green-500 text-white'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-              title={props.hasSelectedConnection() ? "Execute on selected connection" : "Select a connection first"}
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 py-3">
+          <div class="flex items-center gap-2">
+            <CardTitle class={`text-sm ${props.isFocused() ? 'text-primary' : ''}`}>
+              SQL Results {props.isFocused() && '(focused)'}
+            </CardTitle>
+            {props.tableName() && (
+              <Badge variant="outline">{props.tableName()}</Badge>
+            )}
+            {props.primaryKeyColumn() && (
+              <Badge variant="default" class="text-[10px]">PK: {props.primaryKeyColumn()}</Badge>
+            )}
+          </div>
+          <div class="flex items-center gap-2">
+            {props.currentStatement() && (
+              <Button 
+                onClick={props.onExecute}
+                disabled={!props.hasSelectedConnection()}
+                size="sm"
+                variant={props.hasSelectedConnection() ? "default" : "secondary"}
+              >
+                Execute
+              </Button>
+            )}
+            <Button 
+              variant="ghost" 
+              size="icon"
+              class="h-8 w-8"
+              onClick={props.onClose}
             >
-              Execute on Connection
-            </button>
-          )}
-          <button 
-            onClick={props.onClose}
-            class="text-gray-400 hover:text-white px-2"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-      <div class="flex-1 overflow-auto p-2 font-mono text-sm">
-        {props.currentStatement() && (
-          <div class="mb-4">
-            <div class="text-xs text-gray-400 mb-1">Current Statement (Leader+S):</div>
-            <pre class="text-green-300 bg-gray-900 p-2 rounded text-xs overflow-auto">{props.currentStatement()}</pre>
+              <span class="text-lg">×</span>
+            </Button>
           </div>
-        )}
-
-        <Show when={props.sqlQueryResult()}>
-          <div class="mb-4">
-            <div class="text-xs text-gray-400 mb-1">
-              Query Result:
-              {props.tableName() && (
-                <span class="text-blue-400 ml-2">Table: {props.tableName()}</span>
-              )}
-              {props.primaryKeyColumn() && (
-                <span class="text-yellow-400 ml-2">PK: {props.primaryKeyColumn()}</span>
-              )}
+        </CardHeader>
+        <CardContent class="flex-1 overflow-auto pt-0">
+          {props.currentStatement() && (
+            <div class="mb-4">
+              <div class="text-xs text-muted-foreground mb-1">Current Statement:</div>
+              <pre class="text-primary bg-muted p-2 rounded text-xs overflow-auto">{props.currentStatement()}</pre>
             </div>
-            {renderQueryResult()}
-          </div>
-        </Show>
+          )}
 
-        {lastError() && (
-          <div class="mb-4">
-            <div class="text-xs text-red-400 mb-1">Error:</div>
-            <div class="text-red-300 text-xs">{lastError()}</div>
-          </div>
-        )}
+          <Show when={props.sqlQueryResult()}>
+            <div class="mb-4">
+              <div class="text-xs text-muted-foreground mb-1">Query Result:</div>
+              {renderQueryResult()}
+            </div>
+          </Show>
 
-        {props.sqlResults() && (
-          <div>
-            <div class="text-xs text-gray-400 mb-1">Status:</div>
-            <div class="text-blue-300">{props.sqlResults()}</div>
-          </div>
-        )}
+          {lastError() && (
+            <div class="mb-4">
+              <div class="text-xs text-destructive mb-1">Error:</div>
+              <div class="text-destructive text-xs">{lastError()}</div>
+            </div>
+          )}
 
-        {!props.currentStatement() && !props.sqlResults() && !props.sqlQueryResult() && (
-          <div class="text-gray-500 text-xs">
-            Press Leader+S to capture current SQL statement<br/>
-            Press Leader+E to execute entire file
-          </div>
-        )}
-      </div>
-      </div>
+          {props.sqlResults() && (
+            <div>
+              <div class="text-xs text-muted-foreground mb-1">Status:</div>
+              <div class="text-primary">{props.sqlResults()}</div>
+            </div>
+          )}
+
+          {!props.currentStatement() && !props.sqlResults() && !props.sqlQueryResult() && (
+            <div class="text-muted-foreground text-xs">
+              Press Leader+S to capture current SQL statement<br/>
+              Press Leader+E to execute entire file
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </Show>
   )
 }

@@ -1,3 +1,7 @@
+import { Badge } from "~/components/ui/badge"
+import { Button } from "~/components/ui/button"
+import { Separator } from "~/components/ui/separator"
+
 interface StatusBarProps {
   currentFile: () => string
   connected: () => boolean
@@ -22,56 +26,71 @@ export function StatusBar(props: StatusBarProps) {
     return m
   }
 
+  const getModeVariant = () => {
+    const m = props.mode()
+    if (m === "i" || m.startsWith("i")) return "default"
+    if (m === "v" || m === "V" || m === "\x16") return "secondary"
+    if (m === "c") return "destructive"
+    return "outline"
+  }
+
   return (
-    <div class="bg-gray-800 text-white p-2 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="font-bold">Squeal</span>
-        <span class="text-sm text-gray-400">{props.currentFile()}</span>
+    <div class="bg-card text-card-foreground border-b flex items-center justify-between px-4 py-2">
+      <div class="flex items-center gap-3">
+        <span class="font-bold text-lg">Squeal</span>
+        <span class="text-sm text-muted-foreground">{props.currentFile()}</span>
         {props.connected() && (
-          <span class="text-xs bg-green-600 px-2 py-0.5 rounded">
+          <Badge variant={getModeVariant() as any}>
             {getModeDisplay()}
-          </span>
+          </Badge>
         )}
         {props.error() && (
-          <span class="text-xs bg-red-600 px-2 py-0.5 rounded">{props.error()}</span>
+          <Badge variant="destructive">{props.error()}</Badge>
         )}
       </div>
-      <div class="flex items-center gap-4">
-        <button
+      <div class="flex items-center gap-2">
+        <Button
+          variant={props.hasStatement() ? "default" : "ghost"}
+          size="sm"
           onClick={props.onToggleResults}
-          class={`text-xs hover:text-white ${props.hasStatement() ? 'text-blue-400' : 'text-gray-400'}`}
         >
           Toggle SQL
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={props.onToggleExplorer}
-          class="text-xs text-gray-400 hover:text-white"
         >
           Explorer
-        </button>
-        <button
+        </Button>
+        <Separator orientation="vertical" class="h-6 mx-2" />
+        <Button
+          variant="default"
+          size="sm"
           onClick={props.onRunLine}
-          class="text-xs px-2 py-1 bg-blue-600 text-white hover:bg-blue-500 rounded"
           title="Capture and execute SQL statement under cursor"
         >
           Run Line
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={props.onExecuteFile}
-          class="text-xs px-2 py-1 bg-green-600 text-white hover:bg-green-500 rounded"
           title="Execute all SQL in file"
         >
           Execute File
-        </button>
-        <button
+        </Button>
+        <Separator orientation="vertical" class="h-6 mx-2" />
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={props.onToggleDebug}
-          class="text-xs text-gray-400 hover:text-white"
         >
-          Debug (Ctrl+D)
-        </button>
-        <div class="text-xs text-gray-400">
+          Debug
+        </Button>
+        <Badge variant="outline" class="text-xs">
           Row: {props.cursor()[0]}, Col: {props.cursor()[1]}
-        </div>
+        </Badge>
       </div>
     </div>
   )
