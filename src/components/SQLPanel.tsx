@@ -288,6 +288,133 @@ export function SQLPanel(props: SQLPanelProps) {
     const result = props.sqlQueryResult()
     if (!result) return null
 
+    // Handle new format: { columns, data, rows_affected, is_query }
+    if (result.columns && result.data) {
+      const cols = result.columns
+      const data = result.data
+      const pkColumn = props.primaryKeyColumn()
+      const editable = isEditable()
+      const widths = columnWidths()
+
+      if (data.length === 0) {
+        return <div class="text-muted-foreground text-xs">No rows returned</div>
+      }
+
+      return (
+        <div class={`overflow-auto ${resizingCol() ? 'cursor-col-resize' : ''}`}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <For each={cols}>
+                  {(col, colIndex) => (
+                    <TableHead 
+                      class={`relative ${props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}`}
+                      style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
+                    >
+                      <div class="flex items-center justify-between pr-3">
+                        <span class="truncate">{col}</span>
+                        <Show when={col === pkColumn}>
+                          <Badge variant="default" class="ml-1 shrink-0">PK</Badge>
+                        </Show>
+                      </div>
+                      {/* Resize handle */}
+                      <div
+                        class="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/30 transition-colors flex items-center justify-center"
+                        onMouseDown={(e) => handleColResizeStart(col, e)}
+                        title="Drag to resize column"
+                      >
+                        <div class="w-0.5 h-4 bg-border hover:bg-primary/50" />
+                      </div>
+                    </TableHead>
+                  )}
+                </For>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <For each={data}>
+                {(row, rowIndex) => (
+                  <TableRow class={props.isFocused() && selectedRow() === rowIndex() ? 'bg-accent' : ''}>
+                    <For each={cols}>
+                      {(col, colIndex) => {
+                        const isEditing = () => 
+                          editingCell()?.rowIndex === rowIndex() && 
+                          editingCell()?.columnName === col
+                        
+                        const canEdit = () => editable && col !== pkColumn
+                        const isSelected = () => 
+                          props.isFocused() && 
+                          selectedRow() === rowIndex() && 
+                          selectedCol() === colIndex()
+
+                        return (
+                          <TableCell 
+                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${
+                              isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
+                            }`}
+                            style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
+                            onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[colIndex()])}
+                            onClick={() => {
+                              setSelectedRow(rowIndex())
+                              setSelectedCol(colIndex())
+                              props.onFocus()
+                            }}
+                          >
+                            <Show when={isEditing()} fallback={
+                              <>
+                                {row[colIndex()] === null ? (
+                                  <span class="text-muted-foreground italic">NULL</span>
+                                ) : (
+                                  String(row[colIndex()])
+                                )}
+                              </>
+                            }>
+                              <TextField class="w-full">
+                                <TextFieldInput
+                                  value={editValue()}
+                                  onInput={(e) => setEditValue(e.currentTarget.value)}
+                                  onKeyDown={(e: KeyboardEvent) => handleCellKeyDown(e, rowIndex(), Object.fromEntries(cols.map((c: string, i: number) => [c, row[i]])), col)}
+                                  onBlur={() => {
+                                    if (editValue() !== String(row[colIndex()] === null ? "" : row[colIndex()])) {
+                                      saveCellEdit(rowIndex(), Object.fromEntries(cols.map((c: string, i: number) => [c, row[i]])), col)
+                                    } else {
+                                      setEditingCell(null)
+                                    }
+                                  }}
+                                  class="w-full rounded-none border-0 border-primary ring-0 focus-visible:ring-0"
+                                  autofocus
+                                />
+                              </TextField>
+                            </Show>
+                          </TableCell>
+                        )
+                      }}
+                    </For>
+                  </TableRow>
+                )}
+              </For>
+            </TableBody>
+          </Table>
+          
+          <Show when={isEditable() && props.isFocused() && !editingCell()}>
+            <div class="mt-2 text-xs text-muted-foreground">
+              j/k: move up/down • h/l: move left/right • Enter: edit cell • Double-click: edit • Esc: back to editor
+            </div>
+          </Show>
+          <Show when={isEditable() && props.isFocused() && editingCell()}>
+            <div class="mt-2 text-xs text-primary font-medium">
+              Press Enter to save, Escape to cancel
+            </div>
+          </Show>
+          <Show when={isEditable() && !props.isFocused()}>
+            <div class="mt-2 text-xs text-muted-foreground">
+              Ctrl+J to focus results panel
+            </div>
+          </Show>
+        </div>
+      )
+    }
+
+    // Handle old format or array format
     if (Array.isArray(result)) {
       if (result.length === 0) {
         return <div class="text-muted-foreground text-xs">No rows returned</div>

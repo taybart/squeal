@@ -38,18 +38,19 @@ pub async fn get_current_file(state: tauri::State<'_, SharedState>) -> Result<St
 
 #[tauri::command]
 pub async fn send_keys(state: tauri::State<'_, SharedState>, keys: String) -> Result<(), String> {
-    eprintln!("[nvim] Sending keys: {:?}", keys);
+    // eprintln!("[nvim] Sending keys: {:?}", keys);
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         // Use nvim_input with timeout to prevent hanging
         let result = tokio::time::timeout(
             tokio::time::Duration::from_secs(2),
-            nvim_state.nvim.input(&keys)
-        ).await;
-        
+            nvim_state.nvim.input(&keys),
+        )
+        .await;
+
         match result {
             Ok(Ok(_bytes_written)) => {
-                eprintln!("[nvim] Keys sent successfully");
+                // eprintln!("[nvim] Keys sent successfully");
                 Ok(())
             }
             Ok(Err(e)) => {
@@ -322,7 +323,10 @@ pub async fn open_file_internal(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path_str.clone());
-            let _ = app_handle.emit("file-opened", filename);
+            let _ = app_handle.emit("file-opened", serde_json::json!({
+                "filename": filename,
+                "path": path_str
+            }));
 
             return Ok(path_str);
         } else {
@@ -331,6 +335,25 @@ pub async fn open_file_internal(
     }
 
     Err("No file selected".to_string())
+}
+
+// Open a specific file path in nvim (no file picker)
+#[tauri::command]
+pub async fn open_file_path(
+    state: tauri::State<'_, SharedState>,
+    file_path: String,
+) -> Result<(), String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        nvim_state
+            .nvim
+            .command(&format!("edit! {}", file_path))
+            .await
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        Ok(())
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
 }
 
 #[tauri::command]
@@ -344,9 +367,7 @@ pub async fn open_file(
 
 // Execute the SQL capture function directly via Lua
 #[tauri::command]
-pub async fn capture_sql_statement(
-    state: tauri::State<'_, SharedState>,
-) -> Result<String, String> {
+pub async fn capture_sql_statement(state: tauri::State<'_, SharedState>) -> Result<String, String> {
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         // Simple lua command to get the statement
@@ -355,12 +376,12 @@ pub async fn capture_sql_statement(
             .command_output("lua print(squeal_sql.get_stmt_under_cursor())")
             .await
             .map_err(|e| format!("Failed to execute Lua: {}", e))?;
-        
+
         let trimmed = result.trim();
         if trimmed == "nil" || trimmed.is_empty() {
             return Err("No SQL statement found under cursor".to_string());
         }
-        
+
         Ok(trimmed.to_string())
     } else {
         Err("Neovim not initialized".to_string())
@@ -380,21 +401,21 @@ pub async fn get_all_sql_statements(
             .command_output("lua print(vim.inspect(squeal_sql.get_all_statements()))")
             .await
             .map_err(|e| format!("Failed to execute Lua: {}", e))?;
-        
+
         // Parse the vim.inspect output which looks like: { "stmt1", "stmt2" }
         let trimmed = result.trim();
         if trimmed == "{}" || trimmed == "nil" {
             return Ok(vec![]);
         }
-        
-        // Simple parsing - remove { } and split by ", 
+
+        // Simple parsing - remove { } and split by ",
         let content = trimmed.trim_start_matches('{').trim_end_matches('}');
         let statements: Vec<String> = content
             .split("\", \"")
             .map(|s| s.trim().trim_matches('"').to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        
+
         Ok(statements)
     } else {
         Err("Neovim not initialized".to_string())
@@ -414,12 +435,12 @@ pub async fn get_statement_bounds(
             .command_output("lua print(vim.json.encode(squeal_sql.get_stmt_info_under_cursor()))")
             .await
             .map_err(|e| format!("Failed to execute Lua: {}", e))?;
-        
+
         let trimmed = result.trim();
         if trimmed == "null" || trimmed == "nil" || trimmed.is_empty() {
             return Ok(None);
         }
-        
+
         // Parse the JSON response
         match serde_json::from_str::<StatementBounds>(trimmed) {
             Ok(bounds) => Ok(Some(bounds)),
@@ -440,30 +461,31 @@ pub async fn open_scratch_buffer(
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         let nvim = &nvim_state.nvim;
-        
+
         // Create a new scratch buffer with a unique name
         let buf_name = format!("squeal://cell-edit/{}", buffer_id);
-        
+
         // Create new buffer
         nvim.command(&format!("enew"))
             .await
             .map_err(|e| format!("Failed to create new buffer: {}", e))?;
-        
+
         // Set buffer name
         nvim.command(&format!("file {}", buf_name))
             .await
             .map_err(|e| format!("Failed to set buffer name: {}", e))?;
-        
+
         // Set content
         let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
-        let buf = nvim.get_current_buf()
+        let buf = nvim
+            .get_current_buf()
             .await
             .map_err(|e| format!("Failed to get buffer: {}", e))?;
-        
+
         buf.set_lines(0, -1, false, lines)
             .await
             .map_err(|e| format!("Failed to set buffer content: {}", e))?;
-        
+
         // Set buffer as scratch (no file, can be closed without saving warning)
         nvim.command("setlocal buftype=acwrite")
             .await
@@ -474,12 +496,12 @@ pub async fn open_scratch_buffer(
         nvim.command("setlocal noswapfile")
             .await
             .map_err(|e| format!("Failed to set noswapfile: {}", e))?;
-        
+
         // Set a buffer variable so we can identify it
         nvim.command(&format!("let b:squeal_edit_id = '{}'", buffer_id))
             .await
             .map_err(|e| format!("Failed to set buffer variable: {}", e))?;
-        
+
         Ok(())
     } else {
         Err("Neovim not initialized".to_string())
@@ -494,32 +516,35 @@ pub async fn get_scratch_buffer_content(
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         let nvim = &nvim_state.nvim;
-        
+
         // Check if current buffer is a squeal edit buffer
-        let buf_name = nvim.command_output("echo expand('%:p')")
+        let buf_name = nvim
+            .command_output("echo expand('%:p')")
             .await
             .map_err(|e| format!("Failed to get buffer name: {}", e))?;
-        
+
         if !buf_name.contains("squeal://cell-edit/") {
             return Err("Not in a squeal edit buffer".to_string());
         }
-        
+
         // Get content
-        let buf = nvim.get_current_buf()
+        let buf = nvim
+            .get_current_buf()
             .await
             .map_err(|e| format!("Failed to get buffer: {}", e))?;
-        
-        let lines = buf.get_lines(0, -1, false)
+
+        let lines = buf
+            .get_lines(0, -1, false)
             .await
             .map_err(|e| format!("Failed to get lines: {}", e))?;
-        
+
         let content = lines.join("\n");
-        
+
         // Close the buffer
         nvim.command("bwipeout!")
             .await
             .map_err(|e| format!("Failed to close buffer: {}", e))?;
-        
+
         Ok(content)
     } else {
         Err("Neovim not initialized".to_string())
@@ -534,27 +559,215 @@ pub async fn get_scratch_buffer_id(
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         let nvim = &nvim_state.nvim;
-        
+
         // Check if current buffer is a squeal edit buffer
-        let buf_name = nvim.command_output("echo expand('%:p')")
+        let buf_name = nvim
+            .command_output("echo expand('%:p')")
             .await
             .map_err(|e| format!("Failed to get buffer name: {}", e))?;
-        
+
         if !buf_name.contains("squeal://cell-edit/") {
             return Ok(None);
         }
-        
+
         // Get the buffer ID from the variable
-        let id_result = nvim.command_output("echo get(b:, 'squeal_edit_id', '')")
+        let id_result = nvim
+            .command_output("echo get(b:, 'squeal_edit_id', '')")
             .await
             .map_err(|e| format!("Failed to get buffer ID: {}", e))?;
-        
+
         let id = id_result.trim().to_string();
         if id.is_empty() {
             return Ok(None);
         }
-        
+
         Ok(Some(id))
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Tab management commands
+use crate::nvim::state::BufferTab;
+
+#[tauri::command]
+pub async fn create_new_tab(
+    state: tauri::State<'_, SharedState>,
+    name: String,
+    file_path: String,
+) -> Result<BufferTab, String> {
+    let mut state_guard = state.lock().await;
+    if let Some(ref mut nvim_state) = state_guard.as_mut() {
+        let tab_id = nvim_state.next_tab_id;
+        nvim_state.next_tab_id += 1;
+
+        let tab = BufferTab {
+            id: tab_id,
+            buffer_id: None,
+            script_id: None,
+            name,
+            file_path,
+            connection_id: None,
+            is_modified: false,
+            is_active: false, // Not active yet - will be switched to
+        };
+
+        nvim_state.tabs.push(tab.clone());
+
+        Ok(tab)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn switch_tab(
+    state: tauri::State<'_, SharedState>,
+    tab_id: i64,
+) -> Result<String, String> {
+    let mut state_guard = state.lock().await;
+    if let Some(ref mut nvim_state) = state_guard.as_mut() {
+        // Find the tab
+        let file_path = if let Some(tab) = nvim_state.tabs.iter().find(|t| t.id == tab_id) {
+            tab.file_path.clone()
+        } else {
+            return Err("Tab not found".to_string());
+        };
+
+        // Update active states
+        for t in &mut nvim_state.tabs {
+            t.is_active = t.id == tab_id;
+        }
+
+        Ok(file_path)
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn close_tab(
+    state: tauri::State<'_, SharedState>,
+    tab_id: i64,
+) -> Result<Option<(i64, String)>, String> {
+    let mut state_guard = state.lock().await;
+    if let Some(ref mut nvim_state) = state_guard.as_mut() {
+        // Find and remove the tab
+        let tab_index = nvim_state
+            .tabs
+            .iter()
+            .position(|t| t.id == tab_id)
+            .ok_or("Tab not found")?;
+
+        let was_active = nvim_state.tabs[tab_index].is_active;
+        nvim_state.tabs.remove(tab_index);
+
+        // If we closed the active tab, activate another one
+        if was_active && !nvim_state.tabs.is_empty() {
+            nvim_state.tabs[0].is_active = true;
+            let new_path = nvim_state.tabs[0].file_path.clone();
+            let new_id = nvim_state.tabs[0].id;
+            Ok(Some((new_id, new_path)))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn get_tabs(state: tauri::State<'_, SharedState>) -> Result<Vec<BufferTab>, String> {
+    let state_guard = state.lock().await;
+    if let Some(ref nvim_state) = state_guard.as_ref() {
+        Ok(nvim_state.tabs.clone())
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn update_tab_connection(
+    state: tauri::State<'_, SharedState>,
+    tab_id: i64,
+    connection_id: Option<i64>,
+) -> Result<(), String> {
+    let mut state_guard = state.lock().await;
+    if let Some(ref mut nvim_state) = state_guard.as_mut() {
+        if let Some(tab) = nvim_state.tabs.iter_mut().find(|t| t.id == tab_id) {
+            tab.connection_id = connection_id;
+            Ok(())
+        } else {
+            Err("Tab not found".to_string())
+        }
+    } else {
+        Err("Neovim not initialized".to_string())
+    }
+}
+
+// Insert text at the current cursor position in the active buffer
+#[tauri::command]
+pub async fn insert_text_at_cursor(
+    state: tauri::State<'_, SharedState>,
+    text: String,
+) -> Result<(), String> {
+    let state_guard = state.lock().await;
+    if let Some(nvim_state) = state_guard.as_ref() {
+        let nvim = &nvim_state.nvim;
+        
+        // Get cursor position
+        let win = nvim.get_current_win().await
+            .map_err(|e| format!("Failed to get window: {}", e))?;
+        let (row, col) = win.get_cursor().await
+            .map_err(|e| format!("Failed to get cursor: {}", e))?;
+        
+        // Get current buffer
+        let buf = nvim.get_current_buf().await
+            .map_err(|e| format!("Failed to get buffer: {}", e))?;
+        
+        // Get current line
+        let lines = buf.get_lines(row as i64 - 1, row as i64, false).await
+            .map_err(|e| format!("Failed to get lines: {}", e))?;
+        
+        if lines.is_empty() {
+            return Err("Buffer is empty".to_string());
+        }
+        
+        let current_line = &lines[0];
+        let col_idx = col as usize;
+        
+        // Split the line at cursor position
+        let before = &current_line[..col_idx.min(current_line.len())];
+        let after = if col_idx < current_line.len() {
+            &current_line[col_idx..]
+        } else {
+            ""
+        };
+        
+        // Handle multi-line insert
+        let new_text = format!("{}{}{}", before, text, after);
+        let new_lines: Vec<String> = new_text.lines().map(|s| s.to_string()).collect();
+        
+        // Replace the line(s)
+        buf.set_lines(row as i64 - 1, row as i64, false, new_lines.clone()).await
+            .map_err(|e| format!("Failed to set lines: {}", e))?;
+        
+        // Move cursor to end of inserted text
+        let last_line_idx = new_lines.len() - 1;
+        let last_line = &new_lines[last_line_idx];
+        let new_row = row + last_line_idx as i64;
+        let new_col = if last_line_idx == 0 {
+            // Single line insert - cursor at end of inserted text
+            col + text.len() as i64
+        } else {
+            // Multi-line insert - cursor at end of last line
+            last_line.len() as i64 - after.len() as i64
+        };
+        
+        win.set_cursor((new_row, new_col.max(0))).await
+            .map_err(|e| format!("Failed to set cursor: {}", e))?;
+        
+        Ok(())
     } else {
         Err("Neovim not initialized".to_string())
     }

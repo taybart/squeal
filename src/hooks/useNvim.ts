@@ -30,7 +30,7 @@ export function useNvim() {
   const [visualSelection, setVisualSelection] = createSignal<[[number, number], [number, number]] | null>(null)
   const [statementBounds, setStatementBounds] = createSignal<StatementBounds | null>(null)
   const [cmdline, setCmdline] = createSignal<string>("")
-  const [currentFile, setCurrentFile] = createSignal<string>("test.sql")
+  const [currentFile, setCurrentFile] = createSignal<string>("scratch.sql")
   const [nvimError, setNvimError] = createSignal<string>("")
 
   async function initNeovim() {
@@ -40,7 +40,7 @@ export function useNvim() {
 
     setIsInitializing(true)
     try {
-      await invoke("start_nvim", { filePath: "test.sql" })
+      await invoke("start_nvim", { filePath: null })
       setConnected(true)
 
       // Get initial state
@@ -117,8 +117,8 @@ export function useNvim() {
   createEffect(() => {
     if (!connected()) return
 
-    const unlisten = listen("file-opened", (event) => {
-      const filename = event.payload as string
+    const unlisten = listen<{ filename: string; path: string }>("file-opened", (event) => {
+      const { filename } = event.payload
       setCurrentFile(filename)
     })
 

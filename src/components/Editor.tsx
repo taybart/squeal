@@ -359,7 +359,7 @@ export function Editor(props: EditorProps) {
 
   return (
     <div
-      class="flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text"
+      class="flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text tabular-nums"
       onKeyDown={props.onKeyDown}
       onPaste={props.onPaste}
       onClick={props.onClick}

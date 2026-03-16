@@ -5,11 +5,14 @@ import { useNvim } from "~/hooks/useNvim"
 import { useKeyBuffer } from "~/hooks/useKeyBuffer"
 import { useSql } from "~/hooks/useSql"
 import { useConnections } from "~/hooks/useConnections"
+import { useScripts } from "~/hooks/useScripts"
 import { Editor } from "~/components/Editor"
 import { StatusBar } from "~/components/StatusBar"
 import { SQLPanel } from "~/components/SQLPanel"
 import { DebugPanel } from "~/components/DebugPanel"
 import { TableExplorer } from "~/components/TableExplorer"
+import { TabBar } from "~/components/TabBar"
+import { ScriptsExplorer } from "~/components/ScriptsExplorer"
 import { Toaster } from "~/components/ui/sonner"
 import "~/windows/App/App.css"
 
@@ -21,6 +24,21 @@ function App() {
   const [currentQueryTable, setCurrentQueryTable] = createSignal<string | null>(null)
   const [currentQueryPrimaryKey, setCurrentQueryPrimaryKey] = createSignal<string | null>(null)
   const [focusedPanel, setFocusedPanel] = createSignal<'editor' | 'results'>('editor')
+  const [sidebarWidth, setSidebarWidth] = createSignal(288) // 72 * 4 = 288px (w-72 default)
+  const [isResizingSidebar, setIsResizingSidebar] = createSignal(false)
+  
+  // Panel height states (in pixels) - stored in localStorage for persistence
+  const getInitialHeight = (key: string, defaultValue: number) => {
+    const saved = localStorage.getItem(key)
+    return saved ? parseInt(saved, 10) : defaultValue
+  }
+  
+  const [debugPanelHeight, setDebugPanelHeight] = createSignal(getInitialHeight('debugPanelHeight', 200))
+  const [scriptsPanelHeight, setScriptsPanelHeight] = createSignal(getInitialHeight('scriptsPanelHeight', 300))
+  const [explorerPanelHeight, setExplorerPanelHeight] = createSignal(getInitialHeight('explorerPanelHeight', 350))
+  const [resizingPanel, setResizingPanel] = createSignal<string | null>(null)
+  const [resizingStartY, setResizingStartY] = createSignal(0)
+  const [resizingStartHeight, setResizingStartHeight] = createSignal(0)
 
   const {
     connected,
@@ -53,6 +71,7 @@ function App() {
   } = useSql(connected)
 
   const {
+    connections,
     selectedConnection,
     setSelectedConnection,
     executeSql,
@@ -62,10 +81,45 @@ function App() {
     error: connError,
   } = useConnections()
 
+  // Scripts and tabs management
+  const {
+    scripts,
+    tabs,
+    activeTabId,
+    isLoading: scriptsLoading,
+    loadScripts,
+    createTab,
+    switchTab,
+    closeTab,
+    createScriptFile,
+    readScriptFile,
+    deleteScriptFile,
+    syncScriptsWithDb,
+    updateTabConnection,
+  } = useScripts(connected)
+
+  const [showScriptsPanel, setShowScriptsPanel] = createSignal(false)
+
+  // Load scripts when connection changes and update active tab connection
+  createEffect(() => {
+    const connId = selectedConnection()
+    loadScripts(connId ?? undefined)
+    
+    // Update active tab's connection
+    const activeTab = activeTabId()
+    if (activeTab && connId) {
+      updateTabConnection(activeTab, connId)
+    }
+  })
+
   const { flushKeys, handleKeyDown, clearBuffer } = useKeyBuffer(sendKey)
 
-  // Listen for events from the menu and settings window
+  // Listen for events from the menu and settings window + sync scripts
   onMount(() => {
+    // Sync scripts from filesystem on mount
+    console.log("onMount: Starting sync...")
+    syncScriptsWithDb()
+    
     // Listen for "menu-open-settings" event from the menu
     const unlistenOpenSettings = listen("menu-open-settings", () => {
       openSettingsWindow()
@@ -76,9 +130,51 @@ function App() {
       setSelectedConnection(event.payload.connectionId)
     })
 
+    // Listen for file-opened event from menu to create a new tab and switch to it
+    const unlistenFileOpened = listen<{ filename: string; path: string }>("file-opened", async (event) => {
+      const { filename, path } = event.payload
+      // Create a new tab for the opened file and switch to it
+      const newTab = await createTab(filename, path)
+      if (newTab) {
+        const filePath = await switchTab(newTab.id)
+        if (filePath) {
+          await invoke("open_file_path", { filePath })
+        }
+      }
+    })
+
+    // Listen for View menu toggle events
+    const unlistenToggleSql = listen("menu-toggle-sql", () => {
+      setShowResults(!showResults())
+    })
+    const unlistenToggleExplorer = listen("menu-toggle-explorer", () => {
+      setShowExplorer(!showExplorer())
+    })
+    const unlistenToggleScripts = listen("menu-toggle-scripts", () => {
+      setShowScriptsPanel(!showScriptsPanel())
+    })
+    const unlistenToggleDebug = listen("menu-toggle-debug", () => {
+      setShowDebug(!showDebug())
+    })
+
+    // Listen for SQL menu events
+    const unlistenRunLine = listen("menu-run-line", () => {
+      handleRunLine()
+    })
+    const unlistenExecuteFile = listen("menu-execute-file", () => {
+      handleExecuteFile()
+    })
+
     return () => {
       unlistenOpenSettings.then(fn => fn())
       unlistenConnectionSelected.then(fn => fn())
+      unlistenFileOpened.then(fn => fn())
+      unlistenToggleSql.then(fn => fn())
+      unlistenToggleExplorer.then(fn => fn())
+      unlistenToggleScripts.then(fn => fn())
+      unlistenToggleDebug.then(fn => fn())
+      unlistenRunLine.then(fn => fn())
+      unlistenExecuteFile.then(fn => fn())
     }
   })
   createEffect(() => {
@@ -98,8 +194,16 @@ function App() {
   })
 
   const handleRunLine = async () => {
-    // First check if we have a connection selected
-    const connId = selectedConnection()
+    // Determine which connection to use:
+    // 1. First, check if active tab has a connection_id
+    // 2. Otherwise, use the selected connection
+    const activeTab = tabs().find(t => t.is_active)
+    let connId = activeTab?.connection_id
+    
+    if (!connId) {
+      connId = selectedConnection()
+    }
+    
     if (!connId) {
       // Open settings window if no connection selected
       await openSettingsWindow()
@@ -154,14 +258,108 @@ function App() {
   }
 
   const handleExecuteFile = async () => {
+    // Determine which connection to use (same logic as handleRunLine)
+    const activeTab = tabs().find(t => t.is_active)
+    let connId = activeTab?.connection_id
+    
+    if (!connId) {
+      connId = selectedConnection()
+    }
+    
+    if (!connId) {
+      await openSettingsWindow()
+      return
+    }
+    
     try {
       const stmts = await invoke<string[]>("get_all_sql_statements")
       console.log("Statements to execute:", stmts)
+      
+      if (stmts.length === 0) {
+        console.log("No SQL statements found in file")
+        return
+      }
+      
       setShowResults(true)
+      
+      // Execute all statements sequentially
+      const results = []
+      for (const stmt of stmts) {
+        const result = await executeSql(connId!, stmt)
+        results.push(result)
+      }
+      
+      // Show the last result (or aggregate them)
+      if (results.length > 0) {
+        setSqlQueryResult(results[results.length - 1])
+      }
+      
+      console.log("Execute File results:", results)
     } catch (e) {
-      console.error("Failed to get statements:", e)
+      console.error("Failed to execute file:", e)
     }
   }
+
+  // Sidebar resize handlers
+  const handleSidebarResizeStart = (e: MouseEvent) => {
+    e.preventDefault()
+    setIsResizingSidebar(true)
+  }
+
+  const handleSidebarResizeMove = (e: MouseEvent) => {
+    if (isResizingSidebar()) {
+      // Calculate new width from right edge
+      const newWidth = Math.max(200, Math.min(500, window.innerWidth - e.clientX))
+      setSidebarWidth(newWidth)
+    }
+    
+    // Handle vertical panel resizing
+    if (resizingPanel()) {
+      const deltaY = e.clientY - resizingStartY()
+      const newHeight = Math.max(100, Math.min(600, resizingStartHeight() + deltaY))
+      
+      switch (resizingPanel()) {
+        case 'debug':
+          setDebugPanelHeight(newHeight)
+          localStorage.setItem('debugPanelHeight', newHeight.toString())
+          break
+        case 'scripts':
+          setScriptsPanelHeight(newHeight)
+          localStorage.setItem('scriptsPanelHeight', newHeight.toString())
+          break
+        case 'explorer':
+          setExplorerPanelHeight(newHeight)
+          localStorage.setItem('explorerPanelHeight', newHeight.toString())
+          break
+      }
+    }
+  }
+
+  const handleSidebarResizeEnd = () => {
+    setIsResizingSidebar(false)
+    setResizingPanel(null)
+  }
+  
+  // Panel resize handlers
+  const handlePanelResizeStart = (panel: string, currentHeight: number) => (e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizingPanel(panel)
+    setResizingStartY(e.clientY)
+    setResizingStartHeight(currentHeight)
+  }
+
+  // Attach resize listeners
+  onMount(() => {
+    const moveListener = (e: MouseEvent) => handleSidebarResizeMove(e)
+    const upListener = () => handleSidebarResizeEnd()
+    window.addEventListener('mousemove', moveListener)
+    window.addEventListener('mouseup', upListener)
+    return () => {
+      window.removeEventListener('mousemove', moveListener)
+      window.removeEventListener('mouseup', upListener)
+    }
+  })
 
   const handleEditorKeyDown = (e: KeyboardEvent) => {
     if (!connected()) return
@@ -306,6 +504,14 @@ function App() {
   // Combine nvim error and connection error
   const displayError = () => nvimError() || connError()
 
+  // Get the active connection name (from selected connection or active tab)
+  const getActiveConnectionName = () => {
+    const connId = selectedConnection()
+    if (!connId) return null
+    const conn = connections().find(c => c.id === connId)
+    return conn?.name ?? null
+  }
+
   return (
     <main class="h-full w-full flex flex-col">
       <Toaster />
@@ -315,13 +521,66 @@ function App() {
         mode={mode}
         cursor={cursor}
         error={error}
-        onToggleDebug={() => setShowDebug(!showDebug())}
-        onToggleResults={() => setShowResults(!showResults())}
-        onToggleExplorer={() => setShowExplorer(!showExplorer())}
+        activeConnectionName={getActiveConnectionName}
         onRunLine={handleRunLine}
         onExecuteFile={handleExecuteFile}
         hasStatement={() => !!currentStatement()}
       />
+
+      {/* Tab Bar */}
+      <Show when={tabs().length > 0}>
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          connections={connections}
+          onSwitchTab={async (tabId) => {
+            const filePath = await switchTab(tabId)
+            if (filePath) {
+              // Open the file in nvim (not using file picker)
+              await invoke("open_file_path", { filePath })
+            }
+          }}
+          onCloseTab={async (tabId) => {
+            const newFilePath = await closeTab(tabId)
+            if (newFilePath) {
+              // Open the new active tab's file
+              await invoke("open_file_path", { filePath: newFilePath })
+            }
+          }}
+          onNewTab={async () => {
+            // Create a new untitled tab with unique name
+            const baseDir = await invoke<string>("get_base_dir")
+            const scriptsDir = `${baseDir}/scripts`
+            
+            // Find next available untitled number
+            let counter = 1
+            let fileName = `untitled_${counter}.sql`
+            let fullPath = `${scriptsDir}/${fileName}`
+            
+            // Check if file exists and increment counter
+            while (await invoke<boolean>("file_exists", { path: fullPath }).catch(() => false)) {
+              counter++
+              fileName = `untitled_${counter}.sql`
+              fullPath = `${scriptsDir}/${fileName}`
+            }
+            
+            // Create empty file
+            await invoke("write_file", { 
+              path: fullPath,
+              content: "-- New SQL file\n" 
+            }).catch(() => {})
+            
+            const newTab = await createTab(fileName, fullPath)
+            if (newTab) {
+              // Switch to the new tab
+              const filePath = await switchTab(newTab.id)
+              if (filePath) {
+                await invoke("open_file_path", { filePath })
+              }
+            }
+          }}
+        />
+      </Show>
 
       <div class="flex flex-1 overflow-hidden">
         {/* Main content area */}
@@ -339,32 +598,158 @@ function App() {
           />
         </div>
 
-        {/* Right sidebar - stacks panels vertically */}
-        <div class="flex flex-col border-l">
-          <DebugPanel visible={showDebug} connected={connected} />
-          <TableExplorer
-            visible={showExplorer}
-            selectedConnection={selectedConnection}
-            listTables={listTables}
-            getTableSchema={getTableSchema}
-            onClose={() => setShowExplorer(false)}
-            onExecuteTable={(tableName) => {
-              // Execute SELECT * FROM table immediately
-              const connId = selectedConnection()
-              if (!connId) return
+        {/* Right sidebar - only show when panels are visible */}
+        <Show when={showDebug() || showScriptsPanel() || showExplorer()}>
+          <div 
+            class={`flex flex-col border-l relative ${isResizingSidebar() || resizingPanel() ? 'select-none' : ''}`}
+            style={{ width: `${sidebarWidth()}px`, 'min-width': '200px' }}
+          >
+            {/* Resize handle for sidebar width */}
+            <div
+              class="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/30 transition-colors z-10"
+              onMouseDown={handleSidebarResizeStart}
+              title="Drag to resize sidebar"
+            />
+            
+            {/* Debug Panel - with resizable height */}
+            <Show when={showDebug()}>
+              <div 
+                class="flex-shrink-0 flex flex-col overflow-hidden"
+                style={{ height: `${debugPanelHeight()}px`, 'min-height': '100px' }}
+              >
+                <DebugPanel visible={showDebug} connected={connected} />
+              </div>
+              {/* Resize handle between Debug and Scripts */}
+              <Show when={showScriptsPanel() || showExplorer()}>
+                <div
+                  class="h-1 bg-border hover:bg-primary/50 cursor-ns-resize flex-shrink-0 z-10"
+                  onMouseDown={handlePanelResizeStart('debug', debugPanelHeight())}
+                  title="Drag to resize panel"
+                />
+              </Show>
+            </Show>
+            
+            {/* Scripts Explorer - with resizable height */}
+            <Show when={showScriptsPanel()}>
+              <div 
+                class="flex-shrink-0 flex flex-col overflow-hidden"
+                style={{ height: `${scriptsPanelHeight()}px`, 'min-height': '100px' }}
+              >
+                <ScriptsExplorer
+                  visible={showScriptsPanel}
+                  scripts={scripts}
+                  isLoading={scriptsLoading}
+                  selectedConnectionId={selectedConnection}
+                  connections={() => connections().map((c: { id: number; name: string }) => ({ id: c.id, name: c.name }))}
+                  onClose={() => setShowScriptsPanel(false)}
+                  onSync={syncScriptsWithDb}
+                  onCreateScript={async () => {
+                    const connId = selectedConnection()
+                    const folderPath = connId ? connections().find((c: { id: number; name: string }) => c.id === connId)?.name ?? "Unassigned" : "Unassigned"
+                    const scriptName = prompt("Enter script name:")
+                    if (scriptName) {
+                      // Create script file and open in new tab
+                      const script = await createScriptFile(scriptName, connId, folderPath)
+                      if (script) {
+                        // Open in nvim directly (no file picker)
+                        const baseDir = await invoke<string>("get_base_dir")
+                        const fullPath = `${baseDir}/scripts/${script.folder_path}`
+                        await invoke("open_file_path", { filePath: fullPath })
+                        // Create a tab for it and switch to it
+                        const newTab = await createTab(script.name, fullPath)
+                        if (newTab) {
+                          const filePath = await switchTab(newTab.id)
+                          if (filePath) {
+                            await invoke("open_file_path", { filePath })
+                          }
+                        }
+                      }
+                    }
+                  }}
+                  onOpenScript={async (script) => {
+                    // Read the file content first
+                    const content = await readScriptFile(script.id)
+                    if (content !== null) {
+                      // Open in nvim directly (no file picker)
+                      const baseDir = await invoke<string>("get_base_dir")
+                      const fullPath = `${baseDir}/scripts/${script.folder_path}`
+                      await invoke("open_file_path", { filePath: fullPath })
+                      // Create a tab for this script and switch to it
+                      const newTab = await createTab(script.name, fullPath)
+                      if (newTab) {
+                        // Switch to the new tab - this will update UI and open file
+                        const filePath = await switchTab(newTab.id)
+                        if (filePath) {
+                          await invoke("open_file_path", { filePath })
+                        }
+                      }
+                    }
+                  }}
+                  onDeleteScript={async (scriptId: number) => {
+                    if (confirm("Are you sure you want to delete this script?")) {
+                      await deleteScriptFile(scriptId)
+                    }
+                  }}
+                />
+              </div>
+              {/* Resize handle between Scripts and Explorer */}
+              <Show when={showExplorer()}>
+                <div
+                  class="h-1 bg-border hover:bg-primary/50 cursor-ns-resize flex-shrink-0 z-10"
+                  onMouseDown={handlePanelResizeStart('scripts', scriptsPanelHeight())}
+                  title="Drag to resize panel"
+                />
+              </Show>
+            </Show>
+            
+            {/* Table Explorer - takes remaining space */}
+            <Show when={showExplorer()}>
+              <div class="flex-1 flex flex-col overflow-hidden min-h-[100px]">
+                <TableExplorer
+                  visible={showExplorer}
+                  selectedConnection={selectedConnection}
+                  connectionName={getActiveConnectionName}
+                  listTables={listTables}
+                  getTableSchema={getTableSchema}
+                  onClose={() => setShowExplorer(false)}
+                  onExecuteTable={(tableName) => {
+                    // Execute SELECT * FROM table immediately
+                    const connId = selectedConnection()
+                    if (!connId) return
 
-              const sql = `SELECT * FROM ${tableName} LIMIT 100`
-              setCurrentStatement(sql)
-              setShowResults(true)
+                    const sql = `SELECT * FROM ${tableName} LIMIT 100`
+                    setCurrentStatement(sql)
+                    setShowResults(true)
 
-              executeSql(connId, sql).then(result => {
-                setSqlQueryResult(result)
-              }).catch(e => {
-                console.error("Failed to execute table query:", e)
-              })
-            }}
-          />
-        </div>
+                    executeSql(connId, sql).then(result => {
+                      setSqlQueryResult(result)
+                    }).catch(e => {
+                      console.error("Failed to execute table query:", e)
+                    })
+                  }}
+                  onGenerateInsert={async (tableName, columns) => {
+                    // Generate INSERT statement for the table
+                    const columnNames = columns.map(col => col.name).join(', ')
+                    const valuePlaceholders = columns.map(() => '?').join(', ')
+                    
+                    // Build INSERT statement (without comments to keep it clean)
+                    const insertStatement = `INSERT INTO ${tableName} (${columnNames})\nVALUES (${valuePlaceholders});`
+                    
+                    try {
+                      // Insert directly into the nvim buffer at cursor position
+                      await invoke("insert_text_at_cursor", { text: insertStatement })
+                      console.log(`Inserted INSERT statement for ${tableName}`)
+                    } catch (err) {
+                      console.error('Failed to insert text:', err)
+                      // Fallback to clipboard
+                      navigator.clipboard.writeText(insertStatement).catch(() => {})
+                    }
+                  }}
+                />
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
 
       <Show when={isCommandMode()}>

@@ -1,7 +1,7 @@
 use crate::nvim::commands::open_file_internal;
 use crate::nvim::state::SharedState;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{App, Manager};
+use tauri::{App, Emitter, Manager};
 
 pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     // Create menu
@@ -25,8 +25,6 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     let cut_item = MenuItem::with_id(app, "cut", "Cut", true, Some("CmdOrCtrl+X"))?;
     let copy_item = MenuItem::with_id(app, "copy", "Copy", true, Some("CmdOrCtrl+C"))?;
     let paste_item = MenuItem::with_id(app, "paste", "Paste", true, Some("CmdOrCtrl+V"))?;
-    let edit_separator2 = PredefinedMenuItem::separator(app)?;
-    let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+,"))?;
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -38,13 +36,52 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             &cut_item,
             &copy_item,
             &paste_item,
-            &edit_separator2,
-            &settings_item,
         ],
     )?;
 
+    // View menu
+    let toggle_sql_item = MenuItem::with_id(app, "toggle_sql", "Toggle SQL Results", true, Some("CmdOrCtrl+1"))?;
+    let toggle_explorer_item = MenuItem::with_id(app, "toggle_explorer", "Toggle Explorer", true, Some("CmdOrCtrl+2"))?;
+    let toggle_scripts_item = MenuItem::with_id(app, "toggle_scripts", "Toggle Scripts", true, Some("CmdOrCtrl+3"))?;
+    let toggle_debug_item = MenuItem::with_id(app, "toggle_debug", "Toggle Debug", true, Some("CmdOrCtrl+4"))?;
+    let view_menu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &toggle_sql_item,
+            &toggle_explorer_item,
+            &toggle_scripts_item,
+            &toggle_debug_item,
+        ],
+    )?;
+
+    // SQL menu
+    let run_line_item = MenuItem::with_id(app, "run_line", "Run Line", true, Some("CmdOrCtrl+E"))?;
+    let execute_file_item = MenuItem::with_id(app, "execute_file", "Execute File", true, Some("CmdOrCtrl+Shift+E"))?;
+    let sql_menu = Submenu::with_items(
+        app,
+        "SQL",
+        true,
+        &[
+            &run_line_item,
+            &execute_file_item,
+        ],
+    )?;
+
+    // Settings menu
+    let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+,"))?;
+    let settings_separator = PredefinedMenuItem::separator(app)?;
+    let connections_item = MenuItem::with_id(app, "connections", "Connections", true, None::<&str>)?;
+    let settings_menu = Submenu::with_items(
+        app,
+        "Settings",
+        true,
+        &[&settings_item, &settings_separator, &connections_item],
+    )?;
+
     // Create the menu
-    let menu = Menu::with_items(app, &[&file_menu, &edit_menu])?;
+    let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &sql_menu, &settings_menu])?;
 
     // Set menu event handler
     app.on_menu_event(move |app_handle, event| {
@@ -84,12 +121,41 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             "paste" => {
                 // Handled by frontend
             }
+            "toggle_sql" => {
+                let _ = app_handle.emit("menu-toggle-sql", ());
+            }
+            "toggle_explorer" => {
+                let _ = app_handle.emit("menu-toggle-explorer", ());
+            }
+            "toggle_scripts" => {
+                let _ = app_handle.emit("menu-toggle-scripts", ());
+            }
+            "toggle_debug" => {
+                let _ = app_handle.emit("menu-toggle-debug", ());
+            }
+            "run_line" => {
+                let _ = app_handle.emit("menu-run-line", ());
+            }
+            "execute_file" => {
+                let _ = app_handle.emit("menu-execute-file", ());
+            }
             "settings" => {
                 let app_handle = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = crate::open_settings_window_impl(app_handle).await {
                         eprintln!("Failed to open settings window: {}", e);
                     }
+                });
+            }
+            "connections" => {
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = crate::open_settings_window_impl(app_handle.clone()).await {
+                        eprintln!("Failed to open settings window: {}", e);
+                        return;
+                    }
+                    // Emit event to focus on connections section
+                    let _ = app_handle.emit("focus-connections", ());
                 });
             }
             _ => {}
@@ -121,6 +187,7 @@ async fn send_keys_to_nvim(state: SharedState, keys: &str) -> Result<(), String>
             .map_err(|e| format!("Failed to send keys: {}", e))?;
         Ok(())
     } else {
-        Err("Neovim not initialized".to_string())
+        // Silently ignore when Neovim is not initialized (e.g., during startup or window switching)
+        Ok(())
     }
 }

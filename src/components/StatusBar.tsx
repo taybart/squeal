@@ -1,7 +1,6 @@
 import { Show } from "solid-js"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
-import { Separator } from "~/components/ui/separator"
 import ThemeButton from "~/components/Themebutton"
 
 interface StatusBarProps {
@@ -10,9 +9,7 @@ interface StatusBarProps {
   mode: () => string
   cursor: () => [number, number]
   error: () => string | null
-  onToggleDebug: () => void
-  onToggleResults: () => void
-  onToggleExplorer: () => void
+  activeConnectionName: () => string | null
   onRunLine: () => void
   onExecuteFile: () => void
   hasStatement: () => boolean
@@ -52,45 +49,62 @@ export function StatusBar(props: StatusBarProps) {
       </div>
       <ThemeButton />
       <div class="flex items-center gap-2">
+        {/* Run Line - Icon Button */}
         <Button
           variant={props.hasStatement() ? "default" : "ghost"}
-          size="sm"
-          onClick={props.onToggleResults}
-        >
-          Toggle SQL
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={props.onToggleExplorer}
-        >
-          Explorer
-        </Button>
-        <Separator orientation="vertical" class="h-6 mx-2" />
-        <Button
-          variant="default"
-          size="sm"
+          size="icon"
+          class="h-8 w-8"
           onClick={props.onRunLine}
-          title="Capture and execute SQL statement under cursor"
+          title="Run Line (⌘E)"
         >
-          Run Line
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
         </Button>
+
+        {/* Execute File - Icon Button */}
         <Button
           variant="secondary"
-          size="sm"
+          size="icon"
+          class="h-8 w-8"
           onClick={props.onExecuteFile}
-          title="Execute all SQL in file"
+          title="Execute File (⌘⇧E)"
         >
-          Execute File
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4" />
+            <path d="M14 2v6h6" />
+            <path d="M2 15h10" />
+            <path d="m5 12-3 3 3 3" />
+            <path d="M9 18h3" />
+          </svg>
         </Button>
-        <Separator orientation="vertical" class="h-6 mx-2" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={props.onToggleDebug}
-        >
-          Debug
-        </Button>
+
+        <Show when={props.activeConnectionName()}>
+          <Badge variant="default" class="text-xs bg-blue-600">
+            {props.activeConnectionName()}
+          </Badge>
+        </Show>
+
         <Badge variant="outline" class="text-xs">
           Row: {props.cursor()[0]}, Col: {props.cursor()[1]}
         </Badge>

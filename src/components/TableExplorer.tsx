@@ -18,10 +18,12 @@ import {
 interface TableExplorerProps {
   visible: () => boolean
   selectedConnection: () => number | null
+  connectionName: () => string | null
   listTables: (connectionId: number) => Promise<string[]>
   getTableSchema: (connectionId: number, tableName: string) => Promise<ColumnInfo[]>
   onClose: () => void
   onExecuteTable: (tableName: string) => void
+  onGenerateInsert?: (tableName: string, columns: ColumnInfo[]) => void
 }
 
 export function TableExplorer(props: TableExplorerProps) {
@@ -68,11 +70,25 @@ export function TableExplorer(props: TableExplorerProps) {
     }
   }
 
+  const handleGenerateInsert = () => {
+    const table = selectedTable()
+    if (table && props.onGenerateInsert) {
+      props.onGenerateInsert(table, schema())
+    }
+  }
+
   return (
     <Show when={props.visible()}>
-      <Card class="w-72 rounded-none border-0 h-auto max-h-96">
+      <Card class="w-full rounded-none border-0 h-auto max-h-96">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle class="text-sm">Database Explorer</CardTitle>
+          <div class="flex items-center gap-2">
+            <CardTitle class="text-sm">Database Explorer</CardTitle>
+            <Show when={props.connectionName()}>
+              <Badge variant="default" class="text-[10px] bg-blue-600">
+                {props.connectionName()}
+              </Badge>
+            </Show>
+          </div>
           <Button 
             variant="ghost" 
             size="icon" 
@@ -143,15 +159,26 @@ export function TableExplorer(props: TableExplorerProps) {
                 <div class="p-2 text-xs text-muted-foreground border-b font-medium flex justify-between items-center">
                   <span>Schema</span>
                   <Show when={selectedTable()}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-6 text-xs px-2"
-                      onClick={handleExecuteSelect}
-                      title="Execute SELECT * FROM table"
-                    >
-                      ▶ Run
-                    </Button>
+                    <div class="flex gap-1 items-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-6 text-xs px-2 shrink-0"
+                        onClick={handleExecuteSelect}
+                        title="Execute SELECT * FROM table"
+                      >
+                        ▶ Run
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-5 text-[10px] px-1.5 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={handleGenerateInsert}
+                        title="Generate INSERT statement and insert at cursor"
+                      >
+                        +INSERT
+                      </Button>
+                    </div>
                   </Show>
                 </div>
                 <div class="flex-1 overflow-auto p-1">

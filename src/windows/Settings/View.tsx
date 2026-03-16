@@ -1,6 +1,7 @@
-import { For, Show, createSignal } from "solid-js"
+import { For, Show, createSignal, onMount } from "solid-js"
 import { toast } from "somoto"
-import { emit } from "@tauri-apps/api/event"
+import { emit, listen } from "@tauri-apps/api/event"
+import { open } from "@tauri-apps/plugin-dialog"
 import { useConnections } from "~/hooks/useConnections"
 
 import { Button } from "~/components/ui/button"
@@ -70,6 +71,20 @@ export function SettingsWindow() {
     }
   }
 
+  const handlePickFile = async () => {
+    const file = await open({
+      multiple: false,
+      directory: false,
+      filters: [
+        { name: "SQLite Database", extensions: ["db", "sqlite", "sqlite3"] },
+        { name: "All Files", extensions: ["*"] }
+      ]
+    })
+    if (file) {
+      setNewConnectionString(`sqlite://${file}`)
+    }
+  }
+
   const handleTest = async () => {
     setTestStatus("testing")
     const success = await testConnection(newDbType(), newConnectionString())
@@ -89,6 +104,19 @@ export function SettingsWindow() {
       toast.error("Failed to delete connection")
     }
   }
+
+  // Listen for focus-connections event from menu
+  onMount(() => {
+    const unlisten = listen("focus-connections", () => {
+      // Settings window is already focused on connections
+      // This is a no-op for now, but allows for future expansion
+      console.log("Focus connections requested")
+    })
+
+    return () => {
+      unlisten.then(fn => fn())
+    }
+  })
 
   const getDbTypeLabel = (dbType: string) => {
     return dbType === "sqlite" ? "SQLite" : "PostgreSQL"
@@ -153,11 +181,24 @@ export function SettingsWindow() {
                         : "(e.g., postgres://user:pass@localhost/db)"}
                     </span>
                   </TextFieldLabel>
-                  <TextFieldInput
-                    placeholder={newDbType() === "sqlite" ? "sqlite://./mydb.db" : "postgres://localhost/mydb"}
-                    value={newConnectionString()}
-                    onInput={(e) => setNewConnectionString(e.currentTarget.value)}
-                  />
+                  <div class="flex gap-2">
+                    <TextFieldInput
+                      class="flex-1"
+                      placeholder={newDbType() === "sqlite" ? "sqlite://./mydb.db" : "postgres://localhost/mydb"}
+                      value={newConnectionString()}
+                      onInput={(e) => setNewConnectionString(e.currentTarget.value)}
+                    />
+                    <Show when={newDbType() === "sqlite"}>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={handlePickFile}
+                        title="Browse for SQLite database file"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 13l4-4"/><path d="M12 13l-4-4"/></svg>
+                      </Button>
+                    </Show>
+                  </div>
                 </TextField>
 
                 <Show when={testStatus() === "success"}>

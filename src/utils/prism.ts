@@ -25,6 +25,7 @@ export function highlightSql(code: string): string {
 /**
  * Check if the highlighted content is empty or whitespace-only.
  * Returns HTML that will render as visible whitespace.
+ * IMPORTANT: Only replaces spaces outside of HTML tags to preserve attributes.
  */
 export function ensureVisibleWhitespace(code: string, highlighted: string): string {
   if (!code || code.length === 0) {
@@ -37,12 +38,30 @@ export function ensureVisibleWhitespace(code: string, highlighted: string): stri
     return code.replace(/ /g, '&nbsp;').replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
   }
   
-  // Otherwise, replace space sequences to ensure visibility
-  // We use a mix of regular spaces and nbsp to allow line wrapping but preserve visibility
-  return highlighted.replace(/  +/g, (match) => {
-    // Replace pairs of spaces with &nbsp; + space pattern
-    return match.split('').map((_, i) => i % 2 === 0 ? '&nbsp;' : ' ').join('')
-  })
+  // Replace spaces with &nbsp; but only outside of HTML tags
+  // This preserves the HTML structure while making spaces visible
+  let result = ''
+  let inTag = false
+  
+  for (let i = 0; i < highlighted.length; i++) {
+    const char = highlighted[i]
+    
+    if (char === '<') {
+      inTag = true
+      result += char
+    } else if (char === '>') {
+      inTag = false
+      result += char
+    } else if (!inTag && char === ' ') {
+      result += '&nbsp;'
+    } else if (!inTag && char === '\t') {
+      result += '&nbsp;&nbsp;&nbsp;&nbsp;'
+    } else {
+      result += char
+    }
+  }
+  
+  return result
 }
 
 export { Prism }

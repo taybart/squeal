@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
@@ -6,9 +7,41 @@ mod database;
 mod db_commands;
 mod menu;
 mod nvim;
+mod commands;
 
 pub use database::{DatabaseManager, SharedDbManager};
 pub use nvim::{NeovimState, SharedState};
+
+/// Get the squeal base directory (_squeal folder in project root)
+/// This is where all configuration, scripts, and database files are stored
+pub fn get_squeal_base_dir() -> PathBuf {
+    let current_dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    
+    // If we're in src-tauri, go up one level to project root
+    let project_root = if current_dir
+        .file_name()
+        .map(|n| n == "src-tauri")
+        .unwrap_or(false)
+    {
+        current_dir.join("..")
+    } else {
+        current_dir
+    };
+    
+    project_root.join("_squeal")
+}
+
+/// Get the squeal base directory as a string (for frontend)
+// #[tauri::command]
+// pub fn get_base_dir() -> String {
+//     get_squeal_base_dir().to_string_lossy().to_string()
+// }
+
+/// Get the config directory within the squeal base directory
+pub fn get_config_dir() -> PathBuf {
+    get_squeal_base_dir().join("config")
+}
 
 // Internal implementation to open or focus the settings window
 pub async fn open_settings_window_impl(app: tauri::AppHandle) -> Result<(), String> {
@@ -66,22 +99,28 @@ pub fn run() {
             // Initialize database
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // Get project root directory
-                let current_dir =
-                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                // Get squeal base directory (_squeal folder)
+                let base_dir = get_squeal_base_dir();
+                
+                // Ensure the base directory exists
+                if let Err(e) = std::fs::create_dir_all(&base_dir) {
+                    eprintln!("Failed to create base directory {:?}: {}", base_dir, e);
+                    return;
+                }
+                
+                // Create scripts directory if it doesn't exist
+                let scripts_dir = base_dir.join("scripts");
+                if let Err(e) = std::fs::create_dir_all(&scripts_dir) {
+                    eprintln!("Failed to create scripts directory {:?}: {}", scripts_dir, e);
+                }
+                
+                // Create archived_connections directory if it doesn't exist
+                let archived_dir = base_dir.join("archived_connections");
+                if let Err(e) = std::fs::create_dir_all(&archived_dir) {
+                    eprintln!("Failed to create archived_connections directory {:?}: {}", archived_dir, e);
+                }
 
-                // If we're in src-tauri, go up one level
-                let project_root = if current_dir
-                    .file_name()
-                    .map(|n| n == "src-tauri")
-                    .unwrap_or(false)
-                {
-                    current_dir.join("..")
-                } else {
-                    current_dir
-                };
-
-                let db_path = project_root.join("squeal.db");
+                let db_path = base_dir.join("squeal.db");
                 eprintln!("Initializing database at: {:?}", db_path);
 
                 match DatabaseManager::new(&db_path).await {
@@ -108,25 +147,35 @@ pub fn run() {
         .manage(db_manager)
         .invoke_handler(tauri::generate_handler![
             open_settings_window,
-            nvim::start_nvim,
-            nvim::send_keys,
-            nvim::get_buffer_content,
-            nvim::set_buffer_content,
-            nvim::execute_command,
-            nvim::get_mode,
-            nvim::get_cursor,
-            nvim::get_visual_selection,
-            nvim::get_cmdline,
-            nvim::open_file,
-            nvim::get_current_file,
-            nvim::get_debug_logs,
-            nvim::get_last_error,
-            nvim::capture_sql_statement,
-            nvim::get_all_sql_statements,
-            nvim::get_statement_bounds,
-            nvim::open_scratch_buffer,
-            nvim::get_scratch_buffer_content,
-            nvim::get_scratch_buffer_id,
+            commands::get_base_dir,
+            commands::file_exists,
+            commands::write_file,
+            nvim::commands::start_nvim,
+            nvim::commands::send_keys,
+            nvim::commands::get_buffer_content,
+            nvim::commands::set_buffer_content,
+            nvim::commands::execute_command,
+            nvim::commands::get_mode,
+            nvim::commands::get_cursor,
+            nvim::commands::get_visual_selection,
+            nvim::commands::get_cmdline,
+            nvim::commands::open_file,
+            nvim::commands::get_current_file,
+            nvim::commands::get_debug_logs,
+            nvim::commands::get_last_error,
+            nvim::commands::capture_sql_statement,
+            nvim::commands::get_all_sql_statements,
+            nvim::commands::get_statement_bounds,
+            nvim::commands::open_scratch_buffer,
+            nvim::commands::get_scratch_buffer_content,
+            nvim::commands::get_scratch_buffer_id,
+            nvim::commands::create_new_tab,
+            nvim::commands::switch_tab,
+            nvim::commands::close_tab,
+            nvim::commands::get_tabs,
+            nvim::commands::update_tab_connection,
+            nvim::commands::open_file_path,
+            nvim::commands::insert_text_at_cursor,
             db_commands::add_connection,
             db_commands::list_connections,
             db_commands::delete_connection,
@@ -134,17 +183,32 @@ pub fn run() {
             db_commands::execute_sql,
             db_commands::list_tables,
             db_commands::get_table_schema,
-            db_commands::update_row
+            db_commands::update_row,
+            db_commands::create_script,
+            db_commands::list_scripts,
+            db_commands::get_script,
+            db_commands::update_script_connection,
+            db_commands::delete_script,
+            db_commands::get_app_state,
+            db_commands::save_app_state,
+            db_commands::sync_scripts_with_db,
+            db_commands::create_script_file,
+            db_commands::read_script_file,
+            db_commands::delete_script_file,
+            db_commands::write_script_file
         ])
-        .on_window_event(move |_window, event| {
+        .on_window_event(move |window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                let state = state_for_cleanup.clone();
-                tauri::async_runtime::spawn(async move {
-                    let mut state_guard = state.lock().await;
-                    if let Some(mut nvim_state) = state_guard.take() {
-                        let _ = nvim_state.nvim_process.kill().await;
-                    }
-                });
+                // Only kill Neovim when the main window is destroyed, not the settings window
+                if window.label() == "main" {
+                    let state = state_for_cleanup.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let mut state_guard = state.lock().await;
+                        if let Some(mut nvim_state) = state_guard.take() {
+                            let _ = nvim_state.nvim_process.kill().await;
+                        }
+                    });
+                }
             }
         })
         .run(tauri::generate_context!())

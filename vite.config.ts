@@ -14,7 +14,8 @@ export default defineConfig(async () => ({
     {
       name: 'ignore-sql-hmr',
       handleHotUpdate({ file }) {
-        if (file.endsWith('test.sql') || file.endsWith('test.db')) {
+        // Check for _squeal directory (handle both relative and absolute paths)
+        if (file.includes('_squeal')) {
           return [] // Prevent HMR/page reload
         }
       },
@@ -44,8 +45,8 @@ export default defineConfig(async () => ({
       }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ['**/src-tauri/**'],
+      // 3. tell Vite to ignore watching `src-tauri` and `_squeal`
+      ignored: ['**/src-tauri/**', '**/_squeal/**'],
     },
   },
 }))

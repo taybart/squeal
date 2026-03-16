@@ -1,6 +1,6 @@
 /* Light theme - uses shadcn CSS variables */
-[data-kb-theme='light'] code[class*="language-"],
-[data-kb-theme='light'] pre[class*="language-"] {
+[data-kb-theme='light'] code[class*='language-'],
+[data-kb-theme='light'] pre[class*='language-'] {
   color: var(--foreground);
   background: transparent;
   text-shadow: none;
@@ -16,7 +16,7 @@
   hyphens: none;
 }
 
-[data-kb-theme='light'] pre[class*="language-"] {
+[data-kb-theme='light'] pre[class*='language-'] {
   padding: 1em;
   margin: 0.5em 0;
   overflow: auto;
@@ -24,7 +24,7 @@
   background: var(--muted);
 }
 
-[data-kb-theme='light'] :not(pre) > code[class*="language-"] {
+[data-kb-theme='light'] :not(pre) > code[class*='language-'] {
   padding: 0.1em;
   border-radius: 0.3em;
   white-space: normal;
@@ -96,8 +96,8 @@
 }
 
 /* Dark theme - uses shadcn CSS variables */
-[data-kb-theme='dark'] code[class*="language-"],
-[data-kb-theme='dark'] pre[class*="language-"] {
+[data-kb-theme='dark'] code[class*='language-'],
+[data-kb-theme='dark'] pre[class*='language-'] {
   color: var(--foreground);
   background: transparent;
   font-family: var(--font-mono);
@@ -112,14 +112,14 @@
   hyphens: none;
 }
 
-[data-kb-theme='dark'] pre[class*="language-"] {
+[data-kb-theme='dark'] pre[class*='language-'] {
   padding: 1em;
   margin: 0.5em 0;
   overflow: auto;
   background: var(--muted);
 }
 
-[data-kb-theme='dark'] :not(pre) > code[class*="language-"] {
+[data-kb-theme='dark'] :not(pre) > code[class*='language-'] {
   padding: 0.1em;
   border-radius: 0.3em;
   white-space: normal;
@@ -199,38 +199,54 @@
   color: var(--chart-4);
 }
 
-/* Cursor styling - highlight only the background, preserve syntax color */
+/* Preserve token colors inside selection - IMPORTANT for syntax highlighting */
+[data-kb-theme='light'] code.language-sql.selection .token,
+[data-kb-theme='dark'] code.language-sql.selection .token,
+[data-kb-theme='light'] code.language-sql.selection span,
+[data-kb-theme='dark'] code.language-sql.selection span {
+  /* Don't override token colors - let Prism's syntax highlighting show through */
+  background: transparent !important;
+}
+
+/* Cursor styling - strict monospace, no rounding, no padding/margin */
 [data-kb-theme='light'] code.language-sql.cursor,
 [data-kb-theme='dark'] code.language-sql.cursor {
-  /* Don't invert colors - keep Prism's syntax highlighting */
   background: var(--primary) !important;
-  /* Ensure cursor doesn't change line height */
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline;
   line-height: inherit;
   vertical-align: bottom;
 }
 
-/* Cursor as inline span within code elements - preserve syntax color */
+/* Cursor as inline span within code elements - strict monospace */
 [data-kb-theme='light'] code.language-sql span.cursor,
 [data-kb-theme='dark'] code.language-sql span.cursor {
-  /* Don't invert colors - keep Prism's syntax highlighting */
   background: var(--primary) !important;
-  /* Ensure cursor doesn't affect layout flow */
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
   display: inline;
   line-height: inherit;
 }
 
-/* Selection highlighting */
+/* Selection highlighting - only background tint, preserve syntax colors */
 [data-kb-theme='light'] code.language-sql.selection,
 [data-kb-theme='dark'] code.language-sql.selection {
-  background: var(--primary) !important;
-  color: var(--primary-foreground) !important;
+  background: color-mix(in oklch, var(--primary) 35%, transparent) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
-/* Statement under cursor highlighting - subtle accent */
+/* Statement under cursor highlighting - visible but not overpowering */
 [data-kb-theme='light'] code.language-sql.statement-highlight,
 [data-kb-theme='dark'] code.language-sql.statement-highlight {
-  background: var(--accent) !important;
-  color: var(--accent-foreground, var(--foreground)) !important;
+  background: color-mix(in oklch, var(--primary) 10%, transparent) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 /* Ensure empty lines have proper height and whitespace is preserved */
@@ -241,6 +257,12 @@
   line-height: 1.5;
   white-space: pre;
   vertical-align: bottom;
+  /* Ensure &nbsp; renders with exact monospace width */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 /* Ensure editor lines maintain their structure */
@@ -248,20 +270,25 @@
 [data-kb-theme='dark'] code.language-sql.block {
   display: block;
   width: 100%;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 /* Flex container lines */
-[data-kb-theme='light'] div[class*="flex"],
-[data-kb-theme='dark'] div[class*="flex"] {
+[data-kb-theme='light'] div[class*='flex'],
+[data-kb-theme='dark'] div[class*='flex'] {
   line-height: 1.5;
   min-height: 1.5em;
 }
 
-/* Cursor within statement highlight - single character */
+/* Cursor within statement highlight - visible block */
 [data-kb-theme='light'] code.language-sql.statement-highlight span.cursor,
 [data-kb-theme='dark'] code.language-sql.statement-highlight span.cursor {
-  color: var(--background) !important;
-  background: var(--foreground) !important;
+  background: var(--primary) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 /* Ensure inline spans within statement highlight flow properly */
@@ -269,13 +296,7 @@
 [data-kb-theme='dark'] code.language-sql.statement-highlight span {
   display: inline;
   white-space: pre;
-}
-
-/* Make leading/trailing spaces visible by using a subtle background hint */
-[data-kb-theme='light'] code.language-sql.statement-highlight {
-  background: oklch(0.8 0.05 84) !important;
-}
-
-[data-kb-theme='dark'] code.language-sql.statement-highlight {
-  background: oklch(0.35 0.05 84) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }

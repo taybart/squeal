@@ -1,4 +1,5 @@
 use crate::nvim::handler::NeovimHandler;
+use crate::get_config_dir;
 use nvim_rs::{compat::tokio::Compat, create::tokio as create, Neovim};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -39,11 +40,25 @@ pub enum NvimEvent {
     },
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BufferTab {
+    pub id: i64,                      // Unique tab ID
+    pub buffer_id: Option<i64>,       // Nvim buffer handle
+    pub script_id: Option<i64>,       // Associated script (if saved)
+    pub name: String,                 // Display name
+    pub file_path: String,            // Full path to file
+    pub connection_id: Option<i64>,   // Associated connection
+    pub is_modified: bool,
+    pub is_active: bool,
+}
+
 pub struct NeovimState {
     pub nvim: Neovim<Compat<WriteHalf<TcpStream>>>,
     pub nvim_process: Child,
     pub debug_logs: Arc<Mutex<Vec<String>>>,
     pub event_sender: mpsc::UnboundedSender<NvimEvent>,
+    pub tabs: Vec<BufferTab>,           // Multiple buffer tabs
+    pub next_tab_id: i64,             // Counter for unique tab IDs
 }
 
 // State type alias
@@ -152,9 +167,7 @@ pub async fn start_nvim_instance(
 
     // Start nvim with TCP server on the available port and capture stderr
     // Use --headless for no UI and -u to load local init.lua
-    let current_dir =
-        std::env::current_dir().map_err(|e| format!("Failed to get current dir: {}", e))?;
-    let config_dir = current_dir.join("../config");
+    let config_dir = get_config_dir();
     let init_lua_path = config_dir.join("init.lua");
 
     // Build runtimepath: include our config dir first, then default paths
@@ -228,25 +241,36 @@ pub async fn start_nvim_instance(
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     */
 
-    // Open the file if provided
-    let path_to_open = file_path.unwrap_or_else(|| "test.sql".to_string());
-    // Get project root - if we're in src-tauri, go up one level
-    let current_dir =
-        std::env::current_dir().map_err(|e| format!("Failed to get current dir: {}", e))?;
-    let project_root = if current_dir
-        .file_name()
-        .map(|n| n == "src-tauri")
-        .unwrap_or(false)
-    {
-        current_dir.join("..")
+    // Open the file if provided, otherwise create a default scratch file in _squeal/scripts
+    let base_dir = crate::get_squeal_base_dir();
+    let scripts_dir = base_dir.join("scripts");
+    
+    // Ensure scripts directory exists
+    std::fs::create_dir_all(&scripts_dir)
+        .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
+    
+    let full_path = if let Some(path) = file_path {
+        // If a specific path is provided, use it
+        if std::path::Path::new(&path).is_absolute() {
+            std::path::PathBuf::from(path)
+        } else {
+            scripts_dir.join(path)
+        }
     } else {
-        current_dir
+        // Default to a scratch file in _squeal/scripts
+        scripts_dir.join("scratch.sql")
     };
-    let full_path = project_root.join(&path_to_open);
+    
+    // Ensure the parent directory exists
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
 
     // Ensure the file exists (canonicalize requires the file to exist)
     if !full_path.exists() {
-        std::fs::write(&full_path, "").map_err(|e| format!("Failed to create file: {}", e))?;
+        std::fs::write(&full_path, "-- New SQL script\n")
+            .map_err(|e| format!("Failed to create file: {}", e))?;
     }
 
     // Canonicalize to resolve .. and get absolute path
@@ -278,11 +302,28 @@ pub async fn start_nvim_instance(
 
     // Store the Neovim state with the nvim instance
     let mut state_guard = state.lock().await;
+    
+    // Create the initial tab for the opened file
+    let initial_tab = BufferTab {
+        id: 1,
+        buffer_id: None, // Will be populated later
+        script_id: None,
+        name: full_path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unnamed".to_string()),
+        file_path: full_path.to_string_lossy().to_string(),
+        connection_id: None,
+        is_modified: false,
+        is_active: true,
+    };
+    
     *state_guard = Some(NeovimState {
         nvim,
         nvim_process,
         debug_logs,
         event_sender: event_sender.clone(),
+        tabs: vec![initial_tab],
+        next_tab_id: 2,
     });
     drop(state_guard);
 
@@ -295,6 +336,7 @@ pub async fn start_nvim_instance(
         let mut last_cursor: (i64, i64) = (0, 0);
         let mut last_file = String::new();
         let mut last_cmdline = String::new();
+        let mut last_visual_selection: Option<((i64, i64), (i64, i64))> = None;
 
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -380,6 +422,36 @@ pub async fn start_nvim_instance(
                     None
                 };
 
+                // Fetch visual selection if in visual mode (before dropping state_guard)
+                let visual_selection_result = if let Ok(ref mode_str) = mode_result {
+                    let mode = mode_str.trim();
+                    if mode == "v" || mode == "V" || mode == "\x16" {
+                        let start_result = nvim.command_output("echo getpos('v')[1] . ',' . getpos('v')[2]").await;
+                        let end_result = nvim.command_output("echo line('.') . ',' . col('.')").await;
+                        
+                        if let (Ok(start_str), Ok(end_str)) = (start_result, end_result) {
+                            let start_parts: Vec<&str> = start_str.trim().split(',').collect();
+                            let end_parts: Vec<&str> = end_str.trim().split(',').collect();
+                            
+                            if start_parts.len() == 2 && end_parts.len() == 2 {
+                                let start_row = start_parts[0].parse::<i64>().unwrap_or(1) - 1;
+                                let start_col = start_parts[1].parse::<i64>().unwrap_or(0) - 1;
+                                let end_row = end_parts[0].parse::<i64>().unwrap_or(1) - 1;
+                                let end_col = end_parts[1].parse::<i64>().unwrap_or(0) - 1;
+                                Ok(((start_row, start_col), (end_row, end_col)))
+                            } else {
+                                Err("Invalid visual selection format".to_string())
+                            }
+                        } else {
+                            Err("Failed to get visual selection".to_string())
+                        }
+                    } else {
+                        Err("Not in visual mode".to_string())
+                    }
+                } else {
+                    Err("No mode result".to_string())
+                };
+
                 drop(state_guard);
 
                 if let (
@@ -416,6 +488,12 @@ pub async fn start_nvim_instance(
                         (0, 0)
                     };
 
+                    // Get visual selection from pre-fetched result
+                    let visual_selection = match visual_selection_result {
+                        Ok(vs) => Some(vs),
+                        Err(_) => None,
+                    };
+
                     // Join for change detection comparison
                     let content_joined = lines.join("\n");
 
@@ -425,8 +503,9 @@ pub async fn start_nvim_instance(
                     let cursor_changed = cursor != last_cursor;
                     let file_changed = file != last_file;
                     let cmdline_changed = cmdline != last_cmdline;
+                    let visual_changed = visual_selection != last_visual_selection;
 
-                    if content_changed || mode_changed || cursor_changed || file_changed || cmdline_changed {
+                    if content_changed || mode_changed || cursor_changed || file_changed || cmdline_changed || visual_changed {
                         // Send StateUpdate event
                         let result = app_handle_for_polling.emit(
                             "nvim-state-update",
@@ -437,7 +516,7 @@ pub async fn start_nvim_instance(
                                 "cmdline": cmdline,
                                 "current_file": file,
                                 "error": error,
-                                "visual_selection": null, // TODO: Add visual selection support
+                                "visual_selection": visual_selection,
                                 "statement_bounds": statement_bounds
                             }),
                         );
@@ -461,6 +540,9 @@ pub async fn start_nvim_instance(
                         }
                         if cmdline_changed {
                             last_cmdline = cmdline;
+                        }
+                        if visual_changed {
+                            last_visual_selection = visual_selection;
                         }
                     }
                 }
