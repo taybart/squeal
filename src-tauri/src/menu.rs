@@ -19,12 +19,15 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     )?;
 
     // Edit menu
+    // IMPORTANT: On macOS, copy/paste shortcuts only work if you use PredefinedMenuItem
+    // Custom MenuItem without accelerators will NOT work for keyboard shortcuts
     let undo_item = MenuItem::with_id(app, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?;
     let redo_item = MenuItem::with_id(app, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?;
     let edit_separator = PredefinedMenuItem::separator(app)?;
-    let cut_item = MenuItem::with_id(app, "cut", "Cut", true, Some("CmdOrCtrl+X"))?;
-    let copy_item = MenuItem::with_id(app, "copy", "Copy", true, Some("CmdOrCtrl+C"))?;
-    let paste_item = MenuItem::with_id(app, "paste", "Paste", true, Some("CmdOrCtrl+V"))?;
+    let cut_item = PredefinedMenuItem::cut(app, None)?;
+    let copy_item = PredefinedMenuItem::copy(app, None)?;
+    let paste_item = PredefinedMenuItem::paste(app, None)?;
+    let select_all_item = PredefinedMenuItem::select_all(app, None)?;
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -36,6 +39,7 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             &cut_item,
             &copy_item,
             &paste_item,
+            &select_all_item,
         ],
     )?;
 
@@ -116,15 +120,7 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
                     let _ = send_keys_to_nvim(state_arc, "<C-r>").await;
                 });
             }
-            "cut" => {
-                // Handled by frontend
-            }
-            "copy" => {
-                // Handled by frontend
-            }
-            "paste" => {
-                // Handled by frontend
-            }
+            // Cut, Copy, Paste are handled natively by the webview (no menu accelerators)
             "toggle_sql" => {
                 let _ = app_handle.emit("menu-toggle-sql", ());
             }

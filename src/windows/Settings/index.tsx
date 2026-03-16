@@ -4,13 +4,15 @@ import { MetaProvider } from "@solidjs/meta"
 import {
   ColorModeProvider,
   ColorModeScript,
-  cookieStorageManagerSSR,
+  createLocalStorageManager,
 } from "@kobalte/core"
 import { SettingsWindow } from "~/windows/Settings/View"
 import "~/windows/App/App.css"
 
 render(() => {
-  const storageManager = cookieStorageManagerSSR(document.cookie)
+  // Use localStorage for kobalte's color mode (required by UI components)
+  const storageManager = createLocalStorageManager("squeal-theme")
+  
   return (
     <MetaProvider>
       <ColorModeScript storageType={storageManager.type} />

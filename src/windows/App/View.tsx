@@ -6,6 +6,7 @@ import { useKeyBuffer } from "~/hooks/useKeyBuffer"
 import { useSql } from "~/hooks/useSql"
 import { useConnections } from "~/hooks/useConnections"
 import { useScripts } from "~/hooks/useScripts"
+import { useTheme } from "~/hooks/useTheme"
 import { Editor } from "~/components/Editor"
 import { StatusBar } from "~/components/StatusBar"
 import { SQLPanel } from "~/components/SQLPanel"
@@ -36,7 +37,6 @@ function App() {
   
   const [debugPanelHeight, setDebugPanelHeight] = createSignal(getInitialHeight('debugPanelHeight', 200))
   const [scriptsPanelHeight, setScriptsPanelHeight] = createSignal(getInitialHeight('scriptsPanelHeight', 300))
-  const [explorerPanelHeight, setExplorerPanelHeight] = createSignal(getInitialHeight('explorerPanelHeight', 350))
   const [resizingPanel, setResizingPanel] = createSignal<string | null>(null)
   const [resizingStartY, setResizingStartY] = createSignal(0)
   const [resizingStartHeight, setResizingStartHeight] = createSignal(0)
@@ -101,6 +101,9 @@ function App() {
     saveCurrentState,
   } = useScripts(connected)
 
+  // Theme management
+  const { loadTheme } = useTheme()
+
   // Debug: log scripts changes
   createEffect(() => {
     const scriptsData = scripts()
@@ -144,6 +147,9 @@ function App() {
     // Sync scripts from filesystem on mount
     debugLog("onMount: Starting sync...")
     syncScriptsWithDb()
+    
+    // Load theme from database
+    await loadTheme()
     
     // Restore panel visibility from saved state
     try {
@@ -379,10 +385,6 @@ function App() {
           setScriptsPanelHeight(newHeight)
           localStorage.setItem('scriptsPanelHeight', newHeight.toString())
           break
-        case 'explorer':
-          setExplorerPanelHeight(newHeight)
-          localStorage.setItem('explorerPanelHeight', newHeight.toString())
-          break
       }
     }
   }
@@ -571,7 +573,6 @@ function App() {
         currentFile={currentFile}
         connected={connected}
         mode={mode}
-        cursor={cursor}
         error={error}
         activeConnectionName={getActiveConnectionName}
         onRunLine={handleRunLine}

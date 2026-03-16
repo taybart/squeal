@@ -358,43 +358,55 @@ export function Editor(props: EditorProps) {
   }
 
   return (
-    <div
-      class="editor-container flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text tabular-nums"
-      onKeyDown={props.onKeyDown}
-      onPaste={props.onPaste}
-      onClick={props.onClick}
-      onBlur={(e) => {
-        // Only refocus if focus went to body/null (e.g., user pressed Tab)
-        // Don't refocus if user clicked on another panel intentionally
-        const target = e.currentTarget
-        setTimeout(() => {
-          const active = document.activeElement
-          // Only refocus if: focus is on body/null AND the editor still exists in DOM
-          if ((active === document.body || active === null) && target && document.contains(target)) {
-            target.focus()
-          }
-        }, 0)
-      }}
-      tabIndex={0}
-    >
-      <For each={lineData()}>
-        {(data) => (
-          <div class="flex items-start">
-            {/* Line number gutter */}
-            <div 
-              class={`select-none text-right pr-4 text-xs font-mono text-muted-foreground w-[4ch] shrink-0 ${
-                data.isCursorLine ? 'text-foreground' : ''
-              }`}
-            >
-              {data.lineIndex + 1}
+    <div class="flex flex-col h-full">
+      <div
+        class="editor-container flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text tabular-nums"
+        onKeyDown={props.onKeyDown}
+        onPaste={props.onPaste}
+        onClick={props.onClick}
+        onBlur={(e) => {
+          // Only refocus if focus went to body/null (e.g., user pressed Tab)
+          // Don't refocus if user clicked on another panel intentionally
+          const target = e.currentTarget
+          setTimeout(() => {
+            const active = document.activeElement
+            // Only refocus if: focus is on body/null AND the editor still exists in DOM
+            if ((active === document.body || active === null) && target && document.contains(target)) {
+              target.focus()
+            }
+          }, 0)
+        }}
+        tabIndex={0}
+      >
+        <For each={lineData()}>
+          {(data) => (
+            <div class="flex items-start">
+              {/* Line number gutter */}
+              <div 
+                class={`select-none text-right pr-4 text-xs font-mono text-muted-foreground w-[4ch] shrink-0 ${
+                  data.isCursorLine ? 'text-foreground' : ''
+                }`}
+              >
+                {data.lineIndex + 1}
+              </div>
+              {/* Line content */}
+              <div class="flex-1 min-w-0">
+                {renderLine(data)}
+              </div>
             </div>
-            {/* Line content */}
-            <div class="flex-1 min-w-0">
-              {renderLine(data)}
-            </div>
-          </div>
-        )}
-      </For>
+          )}
+        </For>
+      </div>
+      
+      {/* Status bar at bottom */}
+      <div class="border-t bg-card px-3 py-1 text-xs text-muted-foreground flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <span>{props.content().split('\n').length} lines</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-mono">Ln {props.cursor()[0]}, Col {props.cursor()[1]}</span>
+        </div>
+      </div>
     </div>
   )
 }

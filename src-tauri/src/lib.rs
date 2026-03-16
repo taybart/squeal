@@ -97,7 +97,7 @@ pub fn run() {
             menu::add(app)?;
 
             // Initialize database
-            let app_handle = app.handle().clone();
+            let _app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 // Get squeal base directory (_squeal folder)
                 let base_dir = get_squeal_base_dir();
@@ -191,6 +191,9 @@ pub fn run() {
             db_commands::delete_script,
             db_commands::get_app_state,
             db_commands::save_app_state,
+            db_commands::set_theme,
+            db_commands::save_custom_theme,
+            db_commands::clear_custom_theme,
             db_commands::sync_scripts_with_db,
             db_commands::create_script_file,
             db_commands::read_script_file,

@@ -233,11 +233,6 @@ pub async fn execute_sql(
     }
 }
 
-#[derive(Debug, serde::Serialize)]
-struct TableInfo {
-    name: String,
-}
-
 #[tauri::command]
 pub async fn list_tables(
     db_manager: tauri::State<'_, SharedDbManager>,
@@ -292,15 +287,6 @@ pub async fn list_tables(
         }
         _ => Err(format!("Unsupported database type: {}", conn.db_type)),
     }
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ColumnInfo {
-    name: String,
-    data_type: String,
-    nullable: bool,
-    default_value: Option<String>,
-    is_primary_key: bool,
 }
 
 #[tauri::command]
@@ -633,6 +619,7 @@ pub async fn save_app_state(
     show_debug_panel: bool,
     show_scripts_panel: bool,
     show_explorer_panel: bool,
+    theme: Option<String>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
     let manager = manager_guard
@@ -640,7 +627,46 @@ pub async fn save_app_state(
         .ok_or("Database not initialized")?;
     
     manager.save_app_state(active_connection_id, &open_tabs_json, active_tab_index, 
-                          show_debug_panel, show_scripts_panel, show_explorer_panel).await
+                          show_debug_panel, show_scripts_panel, show_explorer_panel, theme).await
+}
+
+#[tauri::command]
+pub async fn set_theme(
+    db_manager: tauri::State<'_, SharedDbManager>,
+    theme: Option<String>,
+) -> Result<(), String> {
+    let manager_guard = db_manager.lock().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Database not initialized")?;
+    
+    manager.set_theme(theme).await
+}
+
+#[tauri::command]
+pub async fn save_custom_theme(
+    db_manager: tauri::State<'_, SharedDbManager>,
+    theme_css: Option<String>,
+    theme_json: Option<String>,
+) -> Result<(), String> {
+    let manager_guard = db_manager.lock().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Database not initialized")?;
+    
+    manager.save_custom_theme(theme_css, theme_json).await
+}
+
+#[tauri::command]
+pub async fn clear_custom_theme(
+    db_manager: tauri::State<'_, SharedDbManager>,
+) -> Result<(), String> {
+    let manager_guard = db_manager.lock().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Database not initialized")?;
+    
+    manager.clear_custom_theme().await
 }
 
 // Script file I/O commands

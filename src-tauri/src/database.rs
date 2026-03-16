@@ -55,14 +55,9 @@ pub struct AppState {
     pub show_debug_panel: bool,
     pub show_scripts_panel: bool,
     pub show_explorer_panel: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenTab {
-    pub script_id: Option<i64>,
-    pub name: String,
-    pub is_modified: bool,
-    pub cursor_position: (i64, i64),
+    pub theme: Option<String>, // "light", "dark", or "system" (None = system)
+    pub theme_css: Option<String>, // Custom shadcn CSS
+    pub theme_json: Option<String>, // Custom theme JSON
 }
 
 pub struct DatabaseManager {
@@ -133,13 +128,16 @@ impl DatabaseManager {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS app_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
+                id INTEGER PRIMARY KEY CHECK(id = 1),
                 active_connection_id INTEGER,
                 open_tabs_json TEXT,
                 active_tab_index INTEGER DEFAULT 0,
                 show_debug_panel INTEGER DEFAULT 0,
                 show_scripts_panel INTEGER DEFAULT 0,
                 show_explorer_panel INTEGER DEFAULT 0,
+                theme TEXT, -- "light", "dark", or NULL for system
+                theme_css TEXT, -- Custom shadcn CSS variables
+                theme_json TEXT, -- Custom theme JSON
                 last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (active_connection_id) REFERENCES connections(id)
             )
@@ -189,6 +187,65 @@ impl DatabaseManager {
             .ok();
             
             eprintln!("Migration complete: Panel visibility columns added");
+        }
+
+        // Migration 2: Add theme column to app_state
+        let theme_exists = sqlx::query(
+            "SELECT name FROM pragma_table_info('app_state') WHERE name = 'theme'"
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if theme_exists.is_none() {
+            eprintln!("Running migration: Adding theme column to app_state");
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN theme TEXT"
+            )
+            .execute(pool)
+            .await
+            .ok();
+            
+            eprintln!("Migration complete: Theme column added");
+        }
+
+        // Migration 3: Add custom theme columns to app_state
+        let theme_css_exists = sqlx::query(
+            "SELECT name FROM pragma_table_info('app_state') WHERE name = 'theme_css'"
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if theme_css_exists.is_none() {
+            eprintln!("Running migration: Adding theme_css column to app_state");
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN theme_css TEXT"
+            )
+            .execute(pool)
+            .await
+            .ok();
+            
+            eprintln!("Migration complete: theme_css column added");
+        }
+
+        let theme_json_exists = sqlx::query(
+            "SELECT name FROM pragma_table_info('app_state') WHERE name = 'theme_json'"
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if theme_json_exists.is_none() {
+            eprintln!("Running migration: Adding theme_json column to app_state");
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN theme_json TEXT"
+            )
+            .execute(pool)
+            .await
+            .ok();
+            
+            eprintln!("Migration complete: theme_json column added");
         }
 
         Ok(())
@@ -453,7 +510,8 @@ impl DatabaseManager {
         let row = sqlx::query(
             r#"
             SELECT id, active_connection_id, open_tabs_json, active_tab_index,
-                   show_debug_panel, show_scripts_panel, show_explorer_panel
+                   show_debug_panel, show_scripts_panel, show_explorer_panel, theme,
+                   theme_css, theme_json
             FROM app_state WHERE id = 1
             "#,
         )
@@ -470,11 +528,14 @@ impl DatabaseManager {
                 show_debug_panel: r.get::<i64, _>("show_debug_panel") != 0,
                 show_scripts_panel: r.get::<i64, _>("show_scripts_panel") != 0,
                 show_explorer_panel: r.get::<i64, _>("show_explorer_panel") != 0,
+                theme: r.get("theme"),
+                theme_css: r.get("theme_css"),
+                theme_json: r.get("theme_json"),
             }),
             None => {
                 // Initialize with defaults
                 sqlx::query(
-                    "INSERT INTO app_state (id, active_connection_id, active_tab_index, show_debug_panel, show_scripts_panel, show_explorer_panel) VALUES (1, NULL, 0, 0, 0, 0)"
+                    "INSERT INTO app_state (id, active_connection_id, active_tab_index, show_debug_panel, show_scripts_panel, show_explorer_panel, theme, theme_css, theme_json) VALUES (1, NULL, 0, 0, 0, 0, NULL, NULL, NULL)"
                 )
                 .execute(&self.pool)
                 .await
@@ -488,6 +549,9 @@ impl DatabaseManager {
                     show_debug_panel: false,
                     show_scripts_panel: false,
                     show_explorer_panel: false,
+                    theme: None,
+                    theme_css: None,
+                    theme_json: None,
                 })
             }
         }
@@ -501,12 +565,13 @@ impl DatabaseManager {
         show_debug_panel: bool,
         show_scripts_panel: bool,
         show_explorer_panel: bool,
+        theme: Option<String>,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
             INSERT INTO app_state (id, active_connection_id, open_tabs_json, active_tab_index, 
-                                   show_debug_panel, show_scripts_panel, show_explorer_panel, last_updated)
-            VALUES (1, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                                   show_debug_panel, show_scripts_panel, show_explorer_panel, theme, last_updated)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 active_connection_id = excluded.active_connection_id,
                 open_tabs_json = excluded.open_tabs_json,
@@ -514,6 +579,7 @@ impl DatabaseManager {
                 show_debug_panel = excluded.show_debug_panel,
                 show_scripts_panel = excluded.show_scripts_panel,
                 show_explorer_panel = excluded.show_explorer_panel,
+                theme = excluded.theme,
                 last_updated = excluded.last_updated
             "#,
         )
@@ -523,9 +589,72 @@ impl DatabaseManager {
         .bind(if show_debug_panel { 1i64 } else { 0i64 })
         .bind(if show_scripts_panel { 1i64 } else { 0i64 })
         .bind(if show_explorer_panel { 1i64 } else { 0i64 })
+        .bind(theme)
         .execute(&self.pool)
         .await
         .map_err(|e| format!("Failed to save app state: {}", e))?;
+
+        Ok(())
+    }
+
+    // Theme management method
+    pub async fn set_theme(&self, theme: Option<String>) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            INSERT INTO app_state (id, theme, last_updated)
+            VALUES (1, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                theme = excluded.theme,
+                last_updated = excluded.last_updated
+            "#,
+        )
+        .bind(theme)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to set theme: {}", e))?;
+
+        Ok(())
+    }
+
+    // Custom theme management methods
+    pub async fn save_custom_theme(
+        &self,
+        theme_css: Option<String>,
+        theme_json: Option<String>,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            INSERT INTO app_state (id, theme_css, theme_json, last_updated)
+            VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                theme_css = excluded.theme_css,
+                theme_json = excluded.theme_json,
+                last_updated = excluded.last_updated
+            "#,
+        )
+        .bind(theme_css)
+        .bind(theme_json)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to save custom theme: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn clear_custom_theme(&self) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            INSERT INTO app_state (id, theme_css, theme_json, last_updated)
+            VALUES (1, NULL, NULL, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                theme_css = excluded.theme_css,
+                theme_json = excluded.theme_json,
+                last_updated = excluded.last_updated
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to clear custom theme: {}", e))?;
 
         Ok(())
     }

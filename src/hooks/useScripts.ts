@@ -288,7 +288,8 @@ export function useScripts(connected: () => boolean) {
     activeTabIndex: number,
     showDebugPanel: boolean = false,
     showScriptsPanel: boolean = false,
-    showExplorerPanel: boolean = false
+    showExplorerPanel: boolean = false,
+    theme?: string | null
   ) => {
     try {
       await invoke("save_app_state", {
@@ -297,7 +298,8 @@ export function useScripts(connected: () => boolean) {
         activeTabIndex,
         showDebugPanel,
         showScriptsPanel,
-        showExplorerPanel
+        showExplorerPanel,
+        theme
       })
     } catch (e) {
       debugError("Scripts", "Failed to save app state:", e)
@@ -308,7 +310,8 @@ export function useScripts(connected: () => boolean) {
   const saveCurrentState = async (
     showDebugPanel: boolean = false,
     showScriptsPanel: boolean = false,
-    showExplorerPanel: boolean = false
+    showExplorerPanel: boolean = false,
+    theme?: string | null
   ) => {
     const currentTabs = tabs()
     const activeId = activeTabId()
@@ -320,7 +323,8 @@ export function useScripts(connected: () => boolean) {
       activeIndex >= 0 ? activeIndex : 0,
       showDebugPanel,
       showScriptsPanel,
-      showExplorerPanel
+      showExplorerPanel,
+      theme
     )
   }
 

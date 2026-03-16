@@ -1,13 +1,11 @@
 import { Show } from "solid-js"
 import { Badge } from "~/components/ui/badge"
 import { Button } from "~/components/ui/button"
-import ThemeButton from "~/components/Themebutton"
 
 interface StatusBarProps {
   currentFile: () => string
   connected: () => boolean
   mode: () => string
-  cursor: () => [number, number]
   error: () => string | null
   activeConnectionName: () => string | null
   onRunLine: () => void
@@ -47,7 +45,6 @@ export function StatusBar(props: StatusBarProps) {
           <Badge variant="destructive">{props.error()}</Badge>
         </Show>
       </div>
-      <ThemeButton />
       <div class="flex items-center gap-2">
         {/* Run Line - Icon Button */}
         <Button
@@ -104,10 +101,6 @@ export function StatusBar(props: StatusBarProps) {
             {props.activeConnectionName()}
           </Badge>
         </Show>
-
-        <Badge variant="outline" class="text-xs">
-          Row: {props.cursor()[0]}, Col: {props.cursor()[1]}
-        </Badge>
       </div>
     </div>
   )

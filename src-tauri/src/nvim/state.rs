@@ -279,7 +279,7 @@ pub async fn start_nvim_instance(
         .map_err(|e| format!("Failed to canonicalize path: {}", e))?;
 
     // Test if nvim is responsive first
-    let test_result = tokio::time::timeout(
+    let _test_result = tokio::time::timeout(
         tokio::time::Duration::from_secs(3),
         nvim.command_output("echo 'test'"),
     )

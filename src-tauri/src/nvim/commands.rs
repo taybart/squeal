@@ -190,11 +190,10 @@ pub async fn get_visual_selection(
             .map_err(|e| format!("Failed to get mode: {}", e))?;
 
         let mut is_visual = false;
-        let mut current_mode = "";
         for (key, value) in &mode_info {
             if let (rmpv::Value::String(k), rmpv::Value::String(v)) = (key, value) {
                 if k.as_str() == Some("mode") {
-                    current_mode = v.as_str().unwrap_or("");
+                    let current_mode = v.as_str().unwrap_or("");
                     // v = charwise visual, V = linewise visual, ^V = blockwise visual
                     is_visual =
                         current_mode == "v" || current_mode == "V" || current_mode == "\x16";
