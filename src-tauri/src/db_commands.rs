@@ -630,13 +630,17 @@ pub async fn save_app_state(
     active_connection_id: Option<i64>,
     open_tabs_json: String,
     active_tab_index: i64,
+    show_debug_panel: bool,
+    show_scripts_panel: bool,
+    show_explorer_panel: bool,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
     let manager = manager_guard
         .as_ref()
         .ok_or("Database not initialized")?;
     
-    manager.save_app_state(active_connection_id, &open_tabs_json, active_tab_index).await
+    manager.save_app_state(active_connection_id, &open_tabs_json, active_tab_index, 
+                          show_debug_panel, show_scripts_panel, show_explorer_panel).await
 }
 
 // Script file I/O commands

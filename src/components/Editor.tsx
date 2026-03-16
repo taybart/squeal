@@ -359,7 +359,7 @@ export function Editor(props: EditorProps) {
 
   return (
     <div
-      class="flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text tabular-nums"
+      class="editor-container flex-1 p-4 font-mono text-sm bg-background text-foreground overflow-auto whitespace-pre focus:outline-none cursor-text tabular-nums"
       onKeyDown={props.onKeyDown}
       onPaste={props.onPaste}
       onClick={props.onClick}
@@ -375,7 +375,22 @@ export function Editor(props: EditorProps) {
       tabIndex={0}
     >
       <For each={lineData()}>
-        {(data) => renderLine(data)}
+        {(data) => (
+          <div class="flex items-start">
+            {/* Line number gutter */}
+            <div 
+              class={`select-none text-right pr-4 text-xs font-mono text-muted-foreground w-[4ch] shrink-0 ${
+                data.isCursorLine ? 'text-foreground' : ''
+              }`}
+            >
+              {data.lineIndex + 1}
+            </div>
+            {/* Line content */}
+            <div class="flex-1 min-w-0">
+              {renderLine(data)}
+            </div>
+          </div>
+        )}
       </For>
     </div>
   )

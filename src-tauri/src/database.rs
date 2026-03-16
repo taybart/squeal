@@ -52,6 +52,9 @@ pub struct AppState {
     pub active_connection_id: Option<i64>,
     pub open_tabs_json: Option<String>,
     pub active_tab_index: i64,
+    pub show_debug_panel: bool,
+    pub show_scripts_panel: bool,
+    pub show_explorer_panel: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +137,9 @@ impl DatabaseManager {
                 active_connection_id INTEGER,
                 open_tabs_json TEXT,
                 active_tab_index INTEGER DEFAULT 0,
+                show_debug_panel INTEGER DEFAULT 0,
+                show_scripts_panel INTEGER DEFAULT 0,
+                show_explorer_panel INTEGER DEFAULT 0,
                 last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (active_connection_id) REFERENCES connections(id)
             )
@@ -141,6 +147,49 @@ impl DatabaseManager {
         )
         .execute(pool)
         .await?;
+
+        // Run migrations to handle schema updates
+        Self::run_migrations(pool).await?;
+
+        Ok(())
+    }
+
+    async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
+        // Migration 1: Add panel visibility columns to app_state
+        // Check if columns exist first
+        let columns_exist = sqlx::query(
+            "SELECT name FROM pragma_table_info('app_state') WHERE name IN ('show_debug_panel', 'show_scripts_panel', 'show_explorer_panel')"
+        )
+        .fetch_all(pool)
+        .await?;
+
+        // If we don't have all 3 columns, add them
+        if columns_exist.len() < 3 {
+            eprintln!("Running migration: Adding panel visibility columns to app_state");
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN show_debug_panel INTEGER DEFAULT 0"
+            )
+            .execute(pool)
+            .await
+            .ok(); // Ignore error if column already exists
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN show_scripts_panel INTEGER DEFAULT 0"
+            )
+            .execute(pool)
+            .await
+            .ok();
+            
+            sqlx::query(
+                "ALTER TABLE app_state ADD COLUMN show_explorer_panel INTEGER DEFAULT 0"
+            )
+            .execute(pool)
+            .await
+            .ok();
+            
+            eprintln!("Migration complete: Panel visibility columns added");
+        }
 
         Ok(())
     }
@@ -403,7 +452,8 @@ impl DatabaseManager {
     pub async fn get_app_state(&self) -> Result<AppState, String> {
         let row = sqlx::query(
             r#"
-            SELECT id, active_connection_id, open_tabs_json, active_tab_index 
+            SELECT id, active_connection_id, open_tabs_json, active_tab_index,
+                   show_debug_panel, show_scripts_panel, show_explorer_panel
             FROM app_state WHERE id = 1
             "#,
         )
@@ -417,11 +467,14 @@ impl DatabaseManager {
                 active_connection_id: r.get("active_connection_id"),
                 open_tabs_json: r.get("open_tabs_json"),
                 active_tab_index: r.get("active_tab_index"),
+                show_debug_panel: r.get::<i64, _>("show_debug_panel") != 0,
+                show_scripts_panel: r.get::<i64, _>("show_scripts_panel") != 0,
+                show_explorer_panel: r.get::<i64, _>("show_explorer_panel") != 0,
             }),
             None => {
                 // Initialize with defaults
                 sqlx::query(
-                    "INSERT INTO app_state (id, active_connection_id, active_tab_index) VALUES (1, NULL, 0)"
+                    "INSERT INTO app_state (id, active_connection_id, active_tab_index, show_debug_panel, show_scripts_panel, show_explorer_panel) VALUES (1, NULL, 0, 0, 0, 0)"
                 )
                 .execute(&self.pool)
                 .await
@@ -432,6 +485,9 @@ impl DatabaseManager {
                     active_connection_id: None,
                     open_tabs_json: None,
                     active_tab_index: 0,
+                    show_debug_panel: false,
+                    show_scripts_panel: false,
+                    show_explorer_panel: false,
                 })
             }
         }
@@ -442,21 +498,31 @@ impl DatabaseManager {
         active_connection_id: Option<i64>,
         open_tabs_json: &str,
         active_tab_index: i64,
+        show_debug_panel: bool,
+        show_scripts_panel: bool,
+        show_explorer_panel: bool,
     ) -> Result<(), String> {
         sqlx::query(
             r#"
-            INSERT INTO app_state (id, active_connection_id, open_tabs_json, active_tab_index, last_updated)
-            VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO app_state (id, active_connection_id, open_tabs_json, active_tab_index, 
+                                   show_debug_panel, show_scripts_panel, show_explorer_panel, last_updated)
+            VALUES (1, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 active_connection_id = excluded.active_connection_id,
                 open_tabs_json = excluded.open_tabs_json,
                 active_tab_index = excluded.active_tab_index,
+                show_debug_panel = excluded.show_debug_panel,
+                show_scripts_panel = excluded.show_scripts_panel,
+                show_explorer_panel = excluded.show_explorer_panel,
                 last_updated = excluded.last_updated
             "#,
         )
         .bind(active_connection_id)
         .bind(open_tabs_json)
         .bind(active_tab_index)
+        .bind(if show_debug_panel { 1i64 } else { 0i64 })
+        .bind(if show_scripts_panel { 1i64 } else { 0i64 })
+        .bind(if show_explorer_panel { 1i64 } else { 0i64 })
         .execute(&self.pool)
         .await
         .map_err(|e| format!("Failed to save app state: {}", e))?;

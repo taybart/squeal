@@ -25,10 +25,10 @@
 }
 
 [data-kb-theme='light'] :not(pre) > code[class*='language-'] {
-  padding: 0.1em;
-  border-radius: 0.3em;
+  padding: 0 !important;
+  border-radius: 0 !important;
   white-space: normal;
-  background: var(--muted);
+  background: transparent !important;
 }
 
 /* Comments - muted/de-emphasized */
@@ -208,10 +208,12 @@
   background: transparent !important;
 }
 
-/* Cursor styling - strict monospace, no rounding, no padding/margin */
+/* Cursor styling - unfocused state (border only) */
 [data-kb-theme='light'] code.language-sql.cursor,
 [data-kb-theme='dark'] code.language-sql.cursor {
-  background: var(--primary) !important;
+  background: transparent !important;
+  outline: 1px solid var(--primary) !important;
+  outline-offset: -1px;
   border-radius: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -220,15 +222,31 @@
   vertical-align: bottom;
 }
 
-/* Cursor as inline span within code elements - strict monospace */
+/* Cursor styling - focused state (solid block) */
+[data-kb-theme='light'] .editor-container:focus-within code.language-sql.cursor,
+[data-kb-theme='dark'] .editor-container:focus-within code.language-sql.cursor {
+  background: var(--primary) !important;
+  outline: none !important;
+}
+
+/* Cursor as inline span within code elements - unfocused state */
 [data-kb-theme='light'] code.language-sql span.cursor,
 [data-kb-theme='dark'] code.language-sql span.cursor {
-  background: var(--primary) !important;
+  background: transparent !important;
+  outline: 1px solid var(--primary) !important;
+  outline-offset: -1px;
   border-radius: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
   display: inline;
   line-height: inherit;
+}
+
+/* Cursor as inline span - focused state */
+[data-kb-theme='light'] .editor-container:focus-within code.language-sql span.cursor,
+[data-kb-theme='dark'] .editor-container:focus-within code.language-sql span.cursor {
+  background: var(--primary) !important;
+  outline: none !important;
 }
 
 /* Selection highlighting - only background tint, preserve syntax colors */
@@ -249,7 +267,7 @@
   margin: 0 !important;
 }
 
-/* Ensure empty lines have proper height and whitespace is preserved */
+/* Ensure empty lines have proper height and whitespace is preserved - NO BACKGROUND */
 [data-kb-theme='light'] code.language-sql,
 [data-kb-theme='dark'] code.language-sql {
   display: inline-block;
@@ -263,6 +281,7 @@
   border-radius: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
+  background: transparent !important;
 }
 
 /* Ensure editor lines maintain their structure */
@@ -282,13 +301,22 @@
   min-height: 1.5em;
 }
 
-/* Cursor within statement highlight - visible block */
+/* Cursor within statement highlight - unfocused state (border only) */
 [data-kb-theme='light'] code.language-sql.statement-highlight span.cursor,
 [data-kb-theme='dark'] code.language-sql.statement-highlight span.cursor {
-  background: var(--primary) !important;
+  background: transparent !important;
+  outline: 1px solid var(--primary) !important;
+  outline-offset: -1px;
   border-radius: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
+}
+
+/* Cursor within statement highlight - focused state (solid block) */
+[data-kb-theme='light'] .editor-container:focus-within code.language-sql.statement-highlight span.cursor,
+[data-kb-theme='dark'] .editor-container:focus-within code.language-sql.statement-highlight span.cursor {
+  background: var(--primary) !important;
+  outline: none !important;
 }
 
 /* Ensure inline spans within statement highlight flow properly */
@@ -299,4 +327,12 @@
   border-radius: 0 !important;
   padding: 0 !important;
   margin: 0 !important;
+}
+
+/* Line number gutter styling */
+[data-kb-theme='light'] .line-number,
+[data-kb-theme='dark'] .line-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  user-select: none;
 }

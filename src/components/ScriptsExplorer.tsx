@@ -14,7 +14,7 @@ interface ScriptsExplorerProps {
   isLoading: () => boolean
   selectedConnectionId: () => number | null
   connections: () => { id: number; name: string }[]
-  onCreateScript: () => void
+  onCreateScript: (connectionId?: number | null) => void
   onOpenScript: (script: Script) => void
   onDeleteScript: (scriptId: number) => void
   onClose: () => void
@@ -158,26 +158,32 @@ export function ScriptsExplorer(props: ScriptsExplorerProps) {
               const isExpanded = () => expandedConnections().has(conn.id)
               const isSelected = () => props.selectedConnectionId() === conn.id
 
-              // Only show connections that have scripts OR are selected
-              if (connScripts().length === 0 && !isSelected()) {
-                return null
-              }
-
               return (
                 <div>
-                  <button
-                    class={`flex items-center w-full px-2 py-1.5 text-xs font-medium rounded ${
+                  <div
+                    class={`flex items-center w-full px-2 py-1.5 text-xs font-medium rounded cursor-pointer ${
                       isSelected() 
                         ? "bg-primary text-primary-foreground" 
                         : "text-foreground hover:bg-accent"
                     }`}
-                    onClick={() => toggleConnection(conn.id)}
                   >
-                    <span class="mr-1">{isExpanded() ? "▼" : "▶"}</span>
-                    <span class="truncate">{conn.name}</span>
-                    {isSelected() && <span class="ml-1 text-[10px]">★</span>}
-                    <span class="ml-auto text-[10px] opacity-70">({connScripts().length})</span>
-                  </button>
+                    <button
+                      class="flex items-center flex-1 min-w-0"
+                      onClick={() => toggleConnection(conn.id)}
+                    >
+                      <span class="mr-1">{isExpanded() ? "▼" : "▶"}</span>
+                      <span class="truncate">{conn.name}</span>
+                      {isSelected() && <span class="ml-1 text-[10px]">★</span>}
+                      <span class="ml-1 text-[10px] opacity-70">({connScripts().length})</span>
+                    </button>
+                    <button
+                      class="ml-1 p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 shrink-0"
+                      onClick={() => props.onCreateScript(conn.id)}
+                      title={`Create new script for ${conn.name}`}
+                    >
+                      <span class="text-xs">+</span>
+                    </button>
+                  </div>
 
                   <Show when={isExpanded()}>
                     <div class="ml-4 space-y-0.5">
@@ -224,6 +230,17 @@ export function ScriptsExplorer(props: ScriptsExplorerProps) {
                           </div>
                         )}
                       </For>
+                      
+                      {/* Show "Create script" button when connection has no scripts */}
+                      <Show when={connScripts().length === 0}>
+                        <button
+                          class="flex items-center px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer w-full"
+                          onClick={() => props.onCreateScript(conn.id)}
+                        >
+                          <span class="mr-1.5">+</span>
+                          <span>Create script</span>
+                        </button>
+                      </Show>
                     </div>
                   </Show>
                 </div>
@@ -231,23 +248,32 @@ export function ScriptsExplorer(props: ScriptsExplorerProps) {
             }}
           </For>
           
-          {/* Unassigned scripts */}
+          {/* Unassigned scripts - always show */}
           {(() => {
             const unassignedScripts = () => scriptsByConnection().get(null) ?? []
             const isExpanded = () => expandedConnections().has("unassigned")
             
-            if (unassignedScripts().length === 0) return null
-            
             return (
               <div>
-                <button
-                  class="flex items-center w-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-                  onClick={() => toggleConnection("unassigned")}
+                <div
+                  class="flex items-center w-full px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
                 >
-                  <span class="mr-1">{isExpanded() ? "▼" : "▶"}</span>
-                  <span>Unassigned</span>
-                  <span class="ml-auto text-[10px] opacity-70">({unassignedScripts().length})</span>
-                </button>
+                  <button
+                    class="flex items-center flex-1 min-w-0"
+                    onClick={() => toggleConnection("unassigned")}
+                  >
+                    <span class="mr-1">{isExpanded() ? "▼" : "▶"}</span>
+                    <span class="truncate">Unassigned</span>
+                    <span class="ml-1 text-[10px] opacity-70">({unassignedScripts().length})</span>
+                  </button>
+                  <button
+                    class="ml-1 p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground opacity-60 hover:opacity-100 shrink-0"
+                    onClick={() => props.onCreateScript(null)}
+                    title="Create new unassigned script (uses current connection)"
+                  >
+                    <span class="text-xs">+</span>
+                  </button>
+                </div>
 
                 <Show when={isExpanded()}>
                   <div class="ml-4 space-y-0.5">
@@ -293,8 +319,19 @@ export function ScriptsExplorer(props: ScriptsExplorerProps) {
                           </button>
                         </div>
                       )}
-                    </For>
-                  </div>
+                      </For>
+                      
+                      {/* Show "Create script" button when unassigned has no scripts */}
+                      <Show when={unassignedScripts().length === 0}>
+                        <button
+                          class="flex items-center px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer w-full"
+                          onClick={() => props.onCreateScript(null)}
+                        >
+                          <span class="mr-1.5">+</span>
+                          <span>Create script (uses current connection)</span>
+                        </button>
+                      </Show>
+                    </div>
                 </Show>
               </div>
             )

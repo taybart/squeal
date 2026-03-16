@@ -1,7 +1,20 @@
 import { createSignal } from 'solid-js'
 
 // Vim operators that need a motion after them
-const OPERATOR_PREFIXES = ['g', 'd', 'c', 'y', 'z', 'm', '<', '>']
+const OPERATOR_PREFIXES = [
+  'g',
+  'd',
+  'c',
+  'y',
+  'z',
+  'm',
+  '<',
+  '>',
+  'f',
+  'F',
+  't',
+  'T',
+]
 
 export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
   const [keyBuffer, setKeyBuffer] = createSignal<string>('')
@@ -45,13 +58,20 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
 
   const isOperatorSequence = (keys: string) => {
     // Check if buffer contains an operator prefix that needs a motion
-    // e.g., 'g' (for gg, gc, etc.), 'd', 'c', 'y'
+    // e.g., 'g' (for gg, gc, etc.), 'd', 'c', 'y', 'f', 'F', etc.
     if (keys.length === 1 && OPERATOR_PREFIXES.includes(keys)) {
       return true
     }
     // 'gc' is also an operator that needs a motion
     if (keys === 'gc' || keys === 'gC') {
       return true
+    }
+    // f, F, t, T are complete after one character (e.g., 'fg')
+    if (
+      keys.length === 2 &&
+      (keys[0] === 'f' || keys[0] === 'F' || keys[0] === 't' || keys[0] === 'T')
+    ) {
+      return false
     }
     return false
   }
@@ -86,8 +106,7 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
     else if (e.key === 'Tab') {
       keys = '<Tab>'
       e.stopPropagation()
-    }
-    else if (e.key === ' ') keys = '<Space>'
+    } else if (e.key === ' ') keys = '<Space>'
     else if (e.key.length === 1) keys = e.key
 
     if (!keys) {
@@ -122,7 +141,7 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
 
       // If this forms an operator prefix, wait longer for the motion
       // Otherwise use a shorter timeout
-      const timeoutMs = isOperatorSequence(newBuffer) ? 150 : 10
+      const timeoutMs = isOperatorSequence(newBuffer) ? 300 : 10
 
       keyTimeout = window.setTimeout(() => {
         console.log(

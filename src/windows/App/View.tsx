@@ -96,9 +96,33 @@ function App() {
     deleteScriptFile,
     syncScriptsWithDb,
     updateTabConnection,
+    getAppState,
+    saveCurrentState,
   } = useScripts(connected)
 
+  // Debug: log scripts changes
+  createEffect(() => {
+    const scriptsData = scripts()
+    console.log("Scripts updated:", scriptsData.length, "scripts")
+    if (scriptsData.length > 0) {
+      console.log("First script:", scriptsData[0])
+    }
+  })
+
   const [showScriptsPanel, setShowScriptsPanel] = createSignal(false)
+
+  // Save panel visibility states when they change
+  createEffect(() => {
+    const debug = showDebug()
+    const scripts = showScriptsPanel()
+    const explorer = showExplorer()
+    
+    // Only save if we're connected (database is ready)
+    if (connected()) {
+      console.log("Saving panel states:", { debug, scripts, explorer })
+      saveCurrentState(debug, scripts, explorer)
+    }
+  })
 
   // Load scripts when connection changes and update active tab connection
   createEffect(() => {
@@ -115,10 +139,27 @@ function App() {
   const { flushKeys, handleKeyDown, clearBuffer } = useKeyBuffer(sendKey)
 
   // Listen for events from the menu and settings window + sync scripts
-  onMount(() => {
+  onMount(async () => {
     // Sync scripts from filesystem on mount
     console.log("onMount: Starting sync...")
     syncScriptsWithDb()
+    
+    // Restore panel visibility from saved state
+    try {
+      const appState = await getAppState()
+      if (appState) {
+        console.log("Restoring panel states:", {
+          debug: appState.show_debug_panel,
+          scripts: appState.show_scripts_panel,
+          explorer: appState.show_explorer_panel
+        })
+        setShowDebug(appState.show_debug_panel)
+        setShowScriptsPanel(appState.show_scripts_panel)
+        setShowExplorer(appState.show_explorer_panel)
+      }
+    } catch (e) {
+      console.error("Failed to restore panel states:", e)
+    }
     
     // Listen for "menu-open-settings" event from the menu
     const unlistenOpenSettings = listen("menu-open-settings", () => {
@@ -643,8 +684,10 @@ function App() {
                   connections={() => connections().map((c: { id: number; name: string }) => ({ id: c.id, name: c.name }))}
                   onClose={() => setShowScriptsPanel(false)}
                   onSync={syncScriptsWithDb}
-                  onCreateScript={async () => {
-                    const connId = selectedConnection()
+                  onCreateScript={async (connectionId?: number | null) => {
+                    // If connectionId is undefined, use the currently selected connection
+                    // If connectionId is null, create in Unassigned but use selected connection for execution
+                    const connId = connectionId === undefined ? selectedConnection() : connectionId
                     const folderPath = connId ? connections().find((c: { id: number; name: string }) => c.id === connId)?.name ?? "Unassigned" : "Unassigned"
                     const scriptName = prompt("Enter script name:")
                     if (scriptName) {
@@ -656,7 +699,7 @@ function App() {
                         const fullPath = `${baseDir}/scripts/${script.folder_path}`
                         await invoke("open_file_path", { filePath: fullPath })
                         // Create a tab for it and switch to it
-                        const newTab = await createTab(script.name, fullPath)
+                        const newTab = await createTab(script.name, fullPath, connId)
                         if (newTab) {
                           const filePath = await switchTab(newTab.id)
                           if (filePath) {
@@ -675,7 +718,7 @@ function App() {
                       const fullPath = `${baseDir}/scripts/${script.folder_path}`
                       await invoke("open_file_path", { filePath: fullPath })
                       // Create a tab for this script and switch to it
-                      const newTab = await createTab(script.name, fullPath)
+                      const newTab = await createTab(script.name, fullPath, script.connection_id)
                       if (newTab) {
                         // Switch to the new tab - this will update UI and open file
                         const filePath = await switchTab(newTab.id)
@@ -787,10 +830,6 @@ function App() {
         </div>
       </Show>
 
-      <div class="bg-gray-800 text-gray-400 p-2 text-xs flex justify-between">
-        <span>Type to send keys to Neovim. White block shows cursor position.</span>
-        <span>Mode: {mode()}</span>
-      </div>
     </main>
   )
 }
