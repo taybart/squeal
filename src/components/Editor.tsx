@@ -364,11 +364,14 @@ export function Editor(props: EditorProps) {
       onPaste={props.onPaste}
       onClick={props.onClick}
       onBlur={(e) => {
-        // Refocus the editor to maintain keyboard input
-        // This prevents Tab from moving focus away permanently
+        // Only refocus if focus went to body/null (e.g., user pressed Tab)
+        // Don't refocus if user clicked on another panel intentionally
+        const target = e.currentTarget
         setTimeout(() => {
-          if (document.activeElement !== e.currentTarget) {
-            e.currentTarget.focus()
+          const active = document.activeElement
+          // Only refocus if: focus is on body/null AND the editor still exists in DOM
+          if ((active === document.body || active === null) && target && document.contains(target)) {
+            target.focus()
           }
         }, 0)
       }}

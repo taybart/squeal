@@ -1,4 +1,5 @@
 import { createSignal } from 'solid-js'
+import { debugLog, debugError } from '~/utils/debug'
 
 // Vim operators that need a motion after them
 const OPERATOR_PREFIXES = [
@@ -34,25 +35,16 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
     const keys = keyBuffer()
     if (!keys) return
 
-    console.log('[KeyBuffer] Flushing keys:', JSON.stringify(keys))
+    debugLog('KeyBuffer', 'Flushing keys:', JSON.stringify(keys))
     setKeyBuffer('')
     const startTime = performance.now()
     try {
       await sendKey(keys)
       const duration = performance.now() - startTime
-      console.log(
-        '[KeyBuffer] Keys sent successfully in',
-        duration.toFixed(2),
-        'ms',
-      )
+      debugLog('KeyBuffer', 'Keys sent successfully in', duration.toFixed(2), 'ms')
     } catch (err) {
       const duration = performance.now() - startTime
-      console.error(
-        '[KeyBuffer] Failed to send keys after',
-        duration.toFixed(2),
-        'ms:',
-        err,
-      )
+      debugError('KeyBuffer', 'Failed to send keys after', duration.toFixed(2), 'ms:', err)
     }
   }
 
@@ -110,11 +102,11 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
     else if (e.key.length === 1) keys = e.key
 
     if (!keys) {
-      console.log('[KeyBuffer] Ignoring key:', e.key)
+      debugLog('KeyBuffer', 'Ignoring key:', e.key)
       return
     } else if (keys.length > 1 || !/^[a-z]$/.test(keys)) {
       // Special key or non-lowercase - send immediately
-      console.log('[KeyBuffer] Sending immediate key:', JSON.stringify(keys))
+      debugLog('KeyBuffer', 'Sending immediate key:', JSON.stringify(keys))
       if (keyTimeout) {
         window.clearTimeout(keyTimeout)
         keyTimeout = null
@@ -126,12 +118,7 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
     } else {
       // Lowercase letter - add to buffer
       const newBuffer = keyBuffer() + keys
-      console.log(
-        '[KeyBuffer] Buffering key:',
-        JSON.stringify(keys),
-        'buffer now:',
-        JSON.stringify(newBuffer),
-      )
+      debugLog('KeyBuffer', 'Buffering key:', JSON.stringify(keys), 'buffer now:', JSON.stringify(newBuffer))
 
       if (keyTimeout) {
         window.clearTimeout(keyTimeout)
@@ -144,11 +131,7 @@ export function useKeyBuffer(sendKey: (keys: string) => Promise<void>) {
       const timeoutMs = isOperatorSequence(newBuffer) ? 300 : 10
 
       keyTimeout = window.setTimeout(() => {
-        console.log(
-          '[KeyBuffer] Timeout reached after',
-          timeoutMs,
-          'ms, flushing buffer',
-        )
+        debugLog('KeyBuffer', 'Timeout reached after', timeoutMs, 'ms, flushing buffer')
         flushKeys()
       }, timeoutMs)
     }

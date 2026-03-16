@@ -44,6 +44,8 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
     let toggle_explorer_item = MenuItem::with_id(app, "toggle_explorer", "Toggle Explorer", true, Some("CmdOrCtrl+2"))?;
     let toggle_scripts_item = MenuItem::with_id(app, "toggle_scripts", "Toggle Scripts", true, Some("CmdOrCtrl+3"))?;
     let toggle_debug_item = MenuItem::with_id(app, "toggle_debug", "Toggle Debug", true, Some("CmdOrCtrl+4"))?;
+    let view_separator = PredefinedMenuItem::separator(app)?;
+    let toggle_debug_logging_item = MenuItem::with_id(app, "toggle_debug_logging", "Toggle Debug Logging", true, Some("CmdOrCtrl+Shift+D"))?;
     let view_menu = Submenu::with_items(
         app,
         "View",
@@ -53,6 +55,8 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             &toggle_explorer_item,
             &toggle_scripts_item,
             &toggle_debug_item,
+            &view_separator,
+            &toggle_debug_logging_item,
         ],
     )?;
 
@@ -132,6 +136,9 @@ pub fn add(app: &mut App) -> Result<(), Box<dyn std::error::Error + 'static>> {
             }
             "toggle_debug" => {
                 let _ = app_handle.emit("menu-toggle-debug", ());
+            }
+            "toggle_debug_logging" => {
+                let _ = app_handle.emit("menu-toggle-debug-logging", ());
             }
             "run_line" => {
                 let _ = app_handle.emit("menu-run-line", ());

@@ -1,6 +1,7 @@
 import { createSignal, createEffect, onMount } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
+import { debugLog, debugError } from "~/utils/debug"
 
 export interface StatementBounds {
   text: string
@@ -54,7 +55,7 @@ export function useNvim() {
       setMode(m)
       setCursor(pos)
     } catch (e) {
-      console.error("Failed to init neovim:", e)
+      debugError("Nvim", "Failed to init neovim:", e)
     } finally {
       setIsInitializing(false)
     }
@@ -69,7 +70,7 @@ export function useNvim() {
       await invoke("send_keys", { keys })
       // Backend will push updates via events, no need to poll
     } catch (err) {
-      console.error("Failed to send key:", err)
+      debugError("Nvim", "Failed to send key:", err)
       setNvimError(String(err))
       // Clear error after 3 seconds
       setTimeout(() => setNvimError(""), 3000)
@@ -84,10 +85,10 @@ export function useNvim() {
   createEffect(() => {
     if (!connected()) return
 
-    console.log("Setting up nvim-state-update listener")
+    debugLog("Nvim", "Setting up nvim-state-update listener")
 
     const unlisten = listen("nvim-state-update", (event) => {
-      console.log("Received nvim-state-update event:", event.payload)
+      debugLog("Nvim", "Received nvim-state-update event:", event.payload)
       const data = event.payload as NvimStateUpdate
       
       setContent(data.content.join("\n"))

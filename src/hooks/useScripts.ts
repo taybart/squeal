@@ -1,5 +1,6 @@
 import { createSignal, createEffect } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
+import { debugLog, debugError } from "~/utils/debug"
 
 export interface Script {
   id: number
@@ -56,7 +57,7 @@ export function useScripts(connected: () => boolean) {
         setActiveTabId(tabsData[0].id)
       }
     } catch (e) {
-      console.error("Failed to load tabs:", e)
+      debugError("Scripts", "Failed to load tabs:", e)
     }
   }
 
@@ -275,7 +276,7 @@ export function useScripts(connected: () => boolean) {
     try {
       return await invoke<AppState>("get_app_state")
     } catch (e) {
-      console.error("Failed to get app state:", e)
+      debugError("Scripts", "Failed to get app state:", e)
       return null
     }
   }
@@ -299,7 +300,7 @@ export function useScripts(connected: () => boolean) {
         showExplorerPanel
       })
     } catch (e) {
-      console.error("Failed to save app state:", e)
+      debugError("Scripts", "Failed to save app state:", e)
     }
   }
 
@@ -343,12 +344,12 @@ export function useScripts(connected: () => boolean) {
         return
       }
       
-      console.log("Restoring", savedTabs.length, "tabs from saved state")
-      console.log("Saved tabs:", savedTabs.map(t => ({ name: t.name, path: t.file_path, connection: t.connection_id })))
+      debugLog("Scripts", "Restoring", savedTabs.length, "tabs from saved state")
+      debugLog("Saved tabs:", savedTabs.map(t => ({ name: t.name, path: t.file_path, connection: t.connection_id })))
       
       // Get current tabs before restoring (this will include the scratch tab)
       const initialTabs = await invoke<BufferTab[]>("get_tabs")
-      console.log("Initial tabs before restore:", initialTabs.map(t => ({ id: t.id, name: t.name })))
+      debugLog("Initial tabs before restore:", initialTabs.map(t => ({ id: t.id, name: t.name })))
       const scratchTab = initialTabs.find(t => t.name === "scratch" || t.name === "scratch.sql")
       
       // Restore each tab
@@ -361,7 +362,7 @@ export function useScripts(connected: () => boolean) {
           })
           
           if (fileExists) {
-            console.log("Restoring tab:", savedTab.name, "from", savedTab.file_path)
+            debugLog("Restoring tab:", savedTab.name, "from", savedTab.file_path)
             // Create tab and set connection
             const newTab = await invoke<BufferTab>("create_new_tab", {
               name: savedTab.name,
@@ -373,21 +374,21 @@ export function useScripts(connected: () => boolean) {
             }
             restoredTabIds.push(newTab.id)
           } else {
-            console.log("Skipping restore - file doesn't exist:", savedTab.file_path)
+            debugLog("Skipping restore - file doesn't exist:", savedTab.file_path)
           }
         } catch (e) {
-          console.error("Failed to restore tab:", savedTab.name, e)
+          debugError("Failed to restore tab:", savedTab.name, e)
         }
       }
       
-      console.log("Restored", restoredTabIds.length, "tabs with IDs:", restoredTabIds)
+      debugLog("Restored", restoredTabIds.length, "tabs with IDs:", restoredTabIds)
       
       // Reload tabs from backend to get updated state
       await loadTabs()
       
       // Get fresh tabs list
       const finalTabs = await invoke<BufferTab[]>("get_tabs")
-      console.log("Final tabs after restore:", finalTabs.map(t => ({ id: t.id, name: t.name, active: t.is_active })))
+      debugLog("Final tabs after restore:", finalTabs.map(t => ({ id: t.id, name: t.name, active: t.is_active })))
       
       // If we successfully restored any tabs and there's a scratch tab, close it
       if (restoredTabIds.length > 0 && scratchTab) {
@@ -395,15 +396,15 @@ export function useScripts(connected: () => boolean) {
           // Check if scratch tab still exists
           const scratchStillExists = finalTabs.some(t => t.id === scratchTab.id)
           if (scratchStillExists) {
-            console.log("Closing scratch tab:", scratchTab.id)
+            debugLog("Closing scratch tab:", scratchTab.id)
             // Close scratch tab directly without triggering state saves
             await invoke("close_tab", { tabId: scratchTab.id })
-            console.log("Closed scratch tab after restoring saved tabs")
+            debugLog("Closed scratch tab after restoring saved tabs")
             // Reload to get final state
             await loadTabs()
           }
         } catch (e) {
-          console.error("Failed to close scratch tab:", e)
+          debugError("Failed to close scratch tab:", e)
         }
       }
       
@@ -413,14 +414,14 @@ export function useScripts(connected: () => boolean) {
         const currentTabs = await invoke<BufferTab[]>("get_tabs")
         const activeTab = currentTabs.find(t => t.name === activeTabName)
         if (activeTab) {
-          console.log("Restoring active tab:", activeTab.name, "(ID:", activeTab.id, ")")
+          debugLog("Restoring active tab:", activeTab.name, "(ID:", activeTab.id, ")")
           const filePath = await switchTab(activeTab.id)
           if (filePath) {
-            console.log("Opening file in nvim:", filePath)
+            debugLog("Opening file in nvim:", filePath)
             await invoke("open_file_path", { filePath })
           }
         } else {
-          console.log("Could not find active tab by name, activating first tab")
+          debugLog("Could not find active tab by name, activating first tab")
           // Fall back to activating first tab
           if (currentTabs.length > 0) {
             const filePath = await switchTab(currentTabs[0].id)
@@ -431,7 +432,7 @@ export function useScripts(connected: () => boolean) {
         }
       }
     } catch (e) {
-      console.error("Failed to restore tabs:", e)
+      debugError("Failed to restore tabs:", e)
       // Fall back to default load
       await loadTabs()
     }
@@ -439,14 +440,14 @@ export function useScripts(connected: () => boolean) {
 
   // Sync filesystem scripts with database
   const syncScriptsWithDb = async (): Promise<Script[]> => {
-    console.log("Starting syncScriptsWithDb...")
+    debugLog("Starting syncScriptsWithDb...")
     try {
       const syncedScripts = await invoke<Script[]>("sync_scripts_with_db")
-      console.log("Sync complete, got", syncedScripts.length, "scripts")
+      debugLog("Sync complete, got", syncedScripts.length, "scripts")
       setScripts(syncedScripts)
       return syncedScripts
     } catch (e) {
-      console.error("Failed to sync scripts:", e)
+      debugError("Failed to sync scripts:", e)
       setError(`Failed to sync scripts: ${e}`)
       return []
     }

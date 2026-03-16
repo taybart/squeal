@@ -1,5 +1,6 @@
 import { createSignal, createEffect } from "solid-js"
 import { listen } from "@tauri-apps/api/event"
+import { debugLog } from "~/utils/debug"
 
 export interface StatementBounds {
   start_row: number
@@ -18,7 +19,7 @@ export function useSql(connected: () => boolean) {
     if (!connected()) return
 
     const unlistenStatement = listen("sql-statement", (event) => {
-      console.log("Received sql-statement event:", event.payload)
+      debugLog("SQL", "Received sql-statement event:", event.payload)
       const data = event.payload as { 
         text: string
         start_row: number
@@ -37,11 +38,11 @@ export function useSql(connected: () => boolean) {
     })
 
     const unlistenExecute = listen("sql-execute", (event) => {
-      console.log("Received sql-execute event:", event.payload)
+      debugLog("SQL", "Received sql-execute event:", event.payload)
       const data = event.payload as { statements: string[], mode: string }
       setSqlResults(`Executing ${data.statements.length} statement(s) in ${data.mode} mode...`)
       setShowResults(true)
-      console.log("Execute SQL:", data.statements)
+      debugLog("SQL", "Execute SQL:", data.statements)
     })
 
     return () => {

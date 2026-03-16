@@ -14,6 +14,7 @@ import { TableExplorer } from "~/components/TableExplorer"
 import { TabBar } from "~/components/TabBar"
 import { ScriptsExplorer } from "~/components/ScriptsExplorer"
 import { Toaster } from "~/components/ui/sonner"
+import { debugLog, debugError, isDebugEnabled, setDebugEnabled } from "~/utils/debug"
 import "~/windows/App/App.css"
 
 function App() {
@@ -58,7 +59,7 @@ function App() {
     try {
       await invoke("open_settings_window")
     } catch (e) {
-      console.error("Failed to open settings window:", e)
+      debugError("Failed to open settings window:", e)
     }
   }
 
@@ -103,9 +104,9 @@ function App() {
   // Debug: log scripts changes
   createEffect(() => {
     const scriptsData = scripts()
-    console.log("Scripts updated:", scriptsData.length, "scripts")
+    debugLog("Scripts updated:", scriptsData.length, "scripts")
     if (scriptsData.length > 0) {
-      console.log("First script:", scriptsData[0])
+      debugLog("First script:", scriptsData[0])
     }
   })
 
@@ -119,7 +120,7 @@ function App() {
     
     // Only save if we're connected (database is ready)
     if (connected()) {
-      console.log("Saving panel states:", { debug, scripts, explorer })
+      debugLog("Saving panel states:", { debug, scripts, explorer })
       saveCurrentState(debug, scripts, explorer)
     }
   })
@@ -141,14 +142,14 @@ function App() {
   // Listen for events from the menu and settings window + sync scripts
   onMount(async () => {
     // Sync scripts from filesystem on mount
-    console.log("onMount: Starting sync...")
+    debugLog("onMount: Starting sync...")
     syncScriptsWithDb()
     
     // Restore panel visibility from saved state
     try {
       const appState = await getAppState()
       if (appState) {
-        console.log("Restoring panel states:", {
+        debugLog("Restoring panel states:", {
           debug: appState.show_debug_panel,
           scripts: appState.show_scripts_panel,
           explorer: appState.show_explorer_panel
@@ -158,8 +159,17 @@ function App() {
         setShowExplorer(appState.show_explorer_panel)
       }
     } catch (e) {
-      console.error("Failed to restore panel states:", e)
+      debugError("Failed to restore panel states:", e)
     }
+    
+    // Listen for "menu-toggle-debug-logging" event from the menu
+    const unlistenToggleDebugLogging = listen("menu-toggle-debug-logging", () => {
+      const newState = !isDebugEnabled()
+      setDebugEnabled(newState)
+      debugLog("App", "Debug logging", newState ? "enabled" : "disabled")
+      // Show a toast notification  
+      alert(`Debug logging ${newState ? 'enabled' : 'disabled'}. Reload to apply changes.`)
+    })
     
     // Listen for "menu-open-settings" event from the menu
     const unlistenOpenSettings = listen("menu-open-settings", () => {
@@ -210,6 +220,7 @@ function App() {
       unlistenOpenSettings.then(fn => fn())
       unlistenConnectionSelected.then(fn => fn())
       unlistenFileOpened.then(fn => fn())
+      unlistenToggleDebugLogging.then(fn => fn())
       unlistenToggleSql.then(fn => fn())
       unlistenToggleExplorer.then(fn => fn())
       unlistenToggleScripts.then(fn => fn())
@@ -255,7 +266,7 @@ function App() {
       // Capture the SQL statement
       const stmt = await invoke<string>("capture_sql_statement")
       if (!stmt || stmt === "nil") {
-        console.error("No SQL statement found under cursor")
+        debugError("No SQL statement found under cursor")
         return
       }
 
@@ -278,9 +289,9 @@ function App() {
       // Execute it immediately
       const result = await executeSql(connId, stmt)
       setSqlQueryResult(result)
-      console.log("Run Line result:", result)
+      debugLog("Run Line result:", result)
     } catch (e) {
-      console.error("Failed to run line:", e)
+      debugError("Failed to run line:", e)
     }
   }
 
@@ -314,10 +325,10 @@ function App() {
     
     try {
       const stmts = await invoke<string[]>("get_all_sql_statements")
-      console.log("Statements to execute:", stmts)
+      debugLog("Statements to execute:", stmts)
       
       if (stmts.length === 0) {
-        console.log("No SQL statements found in file")
+        debugLog("No SQL statements found in file")
         return
       }
       
@@ -335,9 +346,9 @@ function App() {
         setSqlQueryResult(results[results.length - 1])
       }
       
-      console.log("Execute File results:", results)
+      debugLog("Execute File results:", results)
     } catch (e) {
-      console.error("Failed to execute file:", e)
+      debugError("Failed to execute file:", e)
     }
   }
 
@@ -519,21 +530,21 @@ function App() {
     const connId = selectedConnection()
 
     if (!stmt) {
-      console.error("No SQL statement to execute")
+      debugError("No SQL statement to execute")
       return
     }
 
     if (!connId) {
-      console.error("No connection selected")
+      debugError("No connection selected")
       return
     }
 
     try {
       const result = await executeSql(connId, stmt)
       setSqlQueryResult(result)
-      console.log("Query result:", result)
+      debugLog("Query result:", result)
     } catch (e) {
-      console.error("Failed to execute SQL:", e)
+      debugError("Failed to execute SQL:", e)
     }
   }
 
@@ -767,7 +778,7 @@ function App() {
                     executeSql(connId, sql).then(result => {
                       setSqlQueryResult(result)
                     }).catch(e => {
-                      console.error("Failed to execute table query:", e)
+                      debugError("Failed to execute table query:", e)
                     })
                   }}
                   onGenerateInsert={async (tableName, columns) => {
@@ -781,9 +792,9 @@ function App() {
                     try {
                       // Insert directly into the nvim buffer at cursor position
                       await invoke("insert_text_at_cursor", { text: insertStatement })
-                      console.log(`Inserted INSERT statement for ${tableName}`)
+                      debugLog(`Inserted INSERT statement for ${tableName}`)
                     } catch (err) {
-                      console.error('Failed to insert text:', err)
+                      debugError('Failed to insert text:', err)
                       // Fallback to clipboard
                       navigator.clipboard.writeText(insertStatement).catch(() => {})
                     }

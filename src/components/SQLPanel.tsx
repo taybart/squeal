@@ -47,6 +47,8 @@ interface SQLPanelProps {
 }
 
 export function SQLPanel(props: SQLPanelProps) {
+  let inputRef: HTMLInputElement | undefined
+  
   const [editingCell, setEditingCell] = createSignal<{ rowIndex: number; columnName: string } | null>(null)
   const [editValue, setEditValue] = createSignal<string>("")
   const [lastError, setLastError] = createSignal<string | null>(null)
@@ -76,8 +78,12 @@ export function SQLPanel(props: SQLPanelProps) {
     setSelectedRow(0)
     setSelectedCol(0)
     
+    // Handle both formats: raw array or object with {columns: [...], data: [...]}
     if (Array.isArray(result) && result.length > 0) {
       setColumns(Object.keys(result[0]))
+    } else if (result && Array.isArray(result.columns)) {
+      // Object format with columns array
+      setColumns(result.columns)
     } else {
       setColumns([])
     }
@@ -89,14 +95,21 @@ export function SQLPanel(props: SQLPanelProps) {
 
   // Handle keyboard navigation when panel is focused
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Ignore keys with modifiers (Ctrl, Meta, Alt) - these are shortcuts
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      return
+    }
+    
     if (!props.isFocused()) return
     if (editingCell()) return // Don't navigate while editing
 
     const result = props.sqlQueryResult()
-    if (!Array.isArray(result) || result.length === 0) return
+    // Result can be either an array of rows or an object with {data: [...], columns: [...]}
+    const rows = Array.isArray(result) ? result : result?.data
+    if (!Array.isArray(rows) || rows.length === 0) return
 
     const cols = columns()
-    const maxRow = result.length - 1
+    const maxRow = rows.length - 1
     const maxCol = cols.length - 1
 
     switch (e.key) {
@@ -123,10 +136,11 @@ export function SQLPanel(props: SQLPanelProps) {
       case 'Enter':
         e.preventDefault()
         // Start inline editing for the selected cell
-        const row = result[selectedRow()]
+        const row = rows[selectedRow()]
         const col = cols[selectedCol()]
+        const colIndex = selectedCol()
         if (row && col && isEditable() && col !== props.primaryKeyColumn()) {
-          handleCellDoubleClick(selectedRow(), col, row[col])
+          handleCellDoubleClick(selectedRow(), col, row[colIndex])
         }
         break
       case 'Escape':
@@ -135,6 +149,17 @@ export function SQLPanel(props: SQLPanelProps) {
         break
     }
   }
+
+  // Auto-focus input when editing starts
+  createEffect(() => {
+    if (editingCell() && inputRef) {
+      // Use setTimeout to ensure DOM is ready
+      setTimeout(() => {
+        inputRef?.focus()
+        inputRef?.setSelectionRange(inputRef.value.length, inputRef.value.length)
+      }, 0)
+    }
+  })
 
   // Attach keydown listener
   onMount(() => {
@@ -370,6 +395,7 @@ export function SQLPanel(props: SQLPanelProps) {
                             }>
                               <TextField class="w-full">
                                 <TextFieldInput
+                                  ref={inputRef}
                                   value={editValue()}
                                   onInput={(e) => setEditValue(e.currentTarget.value)}
                                   onKeyDown={(e: KeyboardEvent) => handleCellKeyDown(e, rowIndex(), Object.fromEntries(cols.map((c: string, i: number) => [c, row[i]])), col)}
@@ -381,7 +407,6 @@ export function SQLPanel(props: SQLPanelProps) {
                                     }
                                   }}
                                   class="w-full rounded-none border-0 border-primary ring-0 focus-visible:ring-0"
-                                  autofocus
                                 />
                               </TextField>
                             </Show>
@@ -495,6 +520,7 @@ export function SQLPanel(props: SQLPanelProps) {
                             }>
                               <TextField class="w-full">
                                 <TextFieldInput
+                                  ref={inputRef}
                                   value={editValue()}
                                   onInput={(e) => setEditValue(e.currentTarget.value)}
                                   onKeyDown={(e: KeyboardEvent) => handleCellKeyDown(e, rowIndex(), row, col)}
@@ -506,7 +532,6 @@ export function SQLPanel(props: SQLPanelProps) {
                                     }
                                   }}
                                   class="w-full rounded-none border-0 border-primary ring-0 focus-visible:ring-0"
-                                  autofocus
                                 />
                               </TextField>
                             </Show>
