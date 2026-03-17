@@ -27,16 +27,16 @@ end
 function M.get_stmt_info_under_cursor()
   local node = M.get_stmt_ts_node()
   if not node then return nil end
-  
+
   local stmt = vim.treesitter.get_node_text(node, 0)
   local start_row, start_col, end_row, end_col = node:range()
-  
+
   return {
     text = stmt:gsub('\n', ' '):gsub('%s+', ' ') .. ';',
-    start_row = start_row,      -- 0-based
-    start_col = start_col,      -- 0-based
-    end_row = end_row,          -- 0-based, exclusive
-    end_col = end_col           -- 0-based, exclusive
+    start_row = start_row, -- 0-based
+    start_col = start_col, -- 0-based
+    end_row = end_row,   -- 0-based, exclusive
+    end_col = end_col,   -- 0-based, exclusive
   }
 end
 
@@ -55,25 +55,25 @@ function M.get_all_statements()
 
   local root = parser:parse()[1]:root()
   local statements = {}
-  
+
   for child in root:iter_children() do
     if child:type() == 'statement' then
       local stmt = vim.treesitter.get_node_text(child, buf)
       table.insert(statements, stmt:gsub('\n', ' '):gsub('%s+', ' ') .. ';')
     end
   end
-  
+
   return statements
 end
 
 -- Execute statement under cursor
 function M.execute_statement()
   local info = M.get_stmt_info_under_cursor()
-  if not info then 
+  if not info then
     vim.notify('No SQL statement found under cursor', vim.log.levels.WARN)
     return nil
   end
-  
+
   -- Send to RPC client with statement and boundaries
   vim.rpcnotify(1, 'sql_statement', info)
   return info.text
@@ -82,21 +82,18 @@ end
 -- Execute all statements in file
 function M.execute_file()
   local statements = M.get_all_statements()
-  
+
   if #statements == 0 then
     vim.notify('No SQL statements found in file', vim.log.levels.WARN)
     return nil
   end
-  
+
   -- Send to RPC client
-  vim.rpcnotify(1, 'sql_execute', { 
+  vim.rpcnotify(1, 'sql_execute', {
     statements = statements,
-    mode = 'file'
+    mode = 'file',
   })
   return statements
 end
-
--- Make globally accessible for RPC calls
-_G.squeal_sql = M
 
 return M

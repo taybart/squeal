@@ -9,16 +9,14 @@ pub async fn add_connection(
     connection_string: String,
 ) -> Result<crate::database::DbConnection, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let connection = NewDbConnection {
         name,
         db_type,
         connection_string,
     };
-    
+
     manager.add_connection(connection).await
 }
 
@@ -27,10 +25,8 @@ pub async fn list_connections(
     db_manager: tauri::State<'_, SharedDbManager>,
 ) -> Result<Vec<crate::database::DbConnection>, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.list_connections().await
 }
 
@@ -40,18 +36,13 @@ pub async fn delete_connection(
     id: i64,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.delete_connection(id).await
 }
 
 #[tauri::command]
-pub async fn test_connection(
-    db_type: String,
-    connection_string: String,
-) -> Result<(), String> {
+pub async fn test_connection(db_type: String, connection_string: String) -> Result<(), String> {
     // Test without saving - just validate the connection works
     DatabaseManager::test_connection(&db_type, &connection_string).await
 }
@@ -63,15 +54,13 @@ pub async fn execute_sql(
     sql: String,
 ) -> Result<serde_json::Value, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let conn = manager
         .get_connection(connection_id)
         .await?
         .ok_or("Connection not found")?;
-    
+
     match conn.db_type.as_str() {
         "sqlite" => {
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -79,12 +68,11 @@ pub async fn execute_sql(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             // Try to execute as a query first
-            let query_result: Result<Vec<sqlx::sqlite::SqliteRow>, _> = sqlx::query(&sql)
-                .fetch_all(&pool)
-                .await;
-            
+            let query_result: Result<Vec<sqlx::sqlite::SqliteRow>, _> =
+                sqlx::query(&sql).fetch_all(&pool).await;
+
             match query_result {
                 Ok(rows) => {
                     // It's a SELECT query - return results
@@ -97,7 +85,7 @@ pub async fn execute_sql(
                                 .collect()
                         })
                         .unwrap_or_default();
-                    
+
                     let data: Vec<Vec<serde_json::Value>> = rows
                         .into_iter()
                         .map(|row| {
@@ -123,7 +111,7 @@ pub async fn execute_sql(
                                 .collect()
                         })
                         .collect();
-                    
+
                     pool.close().await;
                     Ok(serde_json::json!({
                         "columns": columns,
@@ -138,10 +126,10 @@ pub async fn execute_sql(
                         .execute(&pool)
                         .await
                         .map_err(|e| format!("Query failed: {}", e))?;
-                    
+
                     let rows_affected = result.rows_affected();
                     pool.close().await;
-                    
+
                     Ok(serde_json::json!({
                         "columns": null,
                         "data": null,
@@ -157,12 +145,11 @@ pub async fn execute_sql(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             // Try to execute as a query first
-            let query_result: Result<Vec<sqlx::postgres::PgRow>, _> = sqlx::query(&sql)
-                .fetch_all(&pool)
-                .await;
-            
+            let query_result: Result<Vec<sqlx::postgres::PgRow>, _> =
+                sqlx::query(&sql).fetch_all(&pool).await;
+
             match query_result {
                 Ok(rows) => {
                     // It's a SELECT query - return results
@@ -175,7 +162,7 @@ pub async fn execute_sql(
                                 .collect()
                         })
                         .unwrap_or_default();
-                    
+
                     let data: Vec<Vec<serde_json::Value>> = rows
                         .into_iter()
                         .map(|row| {
@@ -201,7 +188,7 @@ pub async fn execute_sql(
                                 .collect()
                         })
                         .collect();
-                    
+
                     pool.close().await;
                     Ok(serde_json::json!({
                         "columns": columns,
@@ -216,10 +203,10 @@ pub async fn execute_sql(
                         .execute(&pool)
                         .await
                         .map_err(|e| format!("Query failed: {}", e))?;
-                    
+
                     let rows_affected = result.rows_affected();
                     pool.close().await;
-                    
+
                     Ok(serde_json::json!({
                         "columns": null,
                         "data": null,
@@ -239,15 +226,13 @@ pub async fn list_tables(
     connection_id: i64,
 ) -> Result<Vec<String>, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let conn = manager
         .get_connection(connection_id)
         .await?
         .ok_or("Connection not found")?;
-    
+
     match conn.db_type.as_str() {
         "sqlite" => {
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -255,14 +240,14 @@ pub async fn list_tables(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             let rows: Vec<(String,)> = sqlx::query_as(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
             )
             .fetch_all(&pool)
             .await
             .map_err(|e| format!("Failed to list tables: {}", e))?;
-            
+
             let tables: Vec<String> = rows.into_iter().map(|r| r.0).collect();
             pool.close().await;
             Ok(tables)
@@ -273,14 +258,14 @@ pub async fn list_tables(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             let rows: Vec<(String,)> = sqlx::query_as(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
             )
             .fetch_all(&pool)
             .await
             .map_err(|e| format!("Failed to list tables: {}", e))?;
-            
+
             let tables: Vec<String> = rows.into_iter().map(|r| r.0).collect();
             pool.close().await;
             Ok(tables)
@@ -296,15 +281,13 @@ pub async fn get_table_schema(
     table_name: String,
 ) -> Result<Vec<crate::database::ColumnInfo>, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let conn = manager
         .get_connection(connection_id)
         .await?
         .ok_or("Connection not found")?;
-    
+
     match conn.db_type.as_str() {
         "sqlite" => {
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -312,16 +295,16 @@ pub async fn get_table_schema(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             // Get table info using PRAGMA - quote column names that might be keywords
             let rows = sqlx::query(
-                r#"SELECT "name", "type", "notnull", "dflt_value", "pk" FROM pragma_table_info(?)"#
+                r#"SELECT "name", "type", "notnull", "dflt_value", "pk" FROM pragma_table_info(?)"#,
             )
             .bind(&table_name)
             .fetch_all(&pool)
             .await
             .map_err(|e| format!("Failed to get table schema: {}", e))?;
-            
+
             let columns: Vec<crate::database::ColumnInfo> = rows
                 .into_iter()
                 .map(|row| crate::database::ColumnInfo {
@@ -332,7 +315,7 @@ pub async fn get_table_schema(
                     is_primary_key: row.get::<i64, _>("pk") != 0,
                 })
                 .collect();
-            
+
             pool.close().await;
             Ok(columns)
         }
@@ -342,7 +325,7 @@ pub async fn get_table_schema(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             let rows = sqlx::query(
                 r#"
                 SELECT 
@@ -361,13 +344,13 @@ pub async fn get_table_schema(
                 FROM information_schema.columns
                 WHERE table_name = $1
                 ORDER BY ordinal_position
-                "#
+                "#,
             )
             .bind(&table_name)
             .fetch_all(&pool)
             .await
             .map_err(|e| format!("Failed to get table schema: {}", e))?;
-            
+
             let columns: Vec<crate::database::ColumnInfo> = rows
                 .into_iter()
                 .map(|row| crate::database::ColumnInfo {
@@ -378,7 +361,7 @@ pub async fn get_table_schema(
                     is_primary_key: row.get::<bool, _>("is_primary_key"),
                 })
                 .collect();
-            
+
             pool.close().await;
             Ok(columns)
         }
@@ -397,15 +380,13 @@ pub async fn update_row(
     primary_key_value: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let conn = manager
         .get_connection(connection_id)
         .await?
         .ok_or("Connection not found")?;
-    
+
     match conn.db_type.as_str() {
         "sqlite" => {
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
@@ -413,18 +394,16 @@ pub async fn update_row(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             // Build UPDATE statement
             let sql = format!(
                 "UPDATE {} SET {} = ? WHERE {} = ?",
-                table_name,
-                column_name,
-                primary_key_column
+                table_name, column_name, primary_key_column
             );
-            
+
             // Bind values - handle different types
             let mut query = sqlx::query(&sql);
-            
+
             // Bind new value
             if let Some(ref val) = new_value {
                 if val.is_null() {
@@ -443,7 +422,7 @@ pub async fn update_row(
             } else {
                 query = query.bind(None::<Option<String>>);
             }
-            
+
             // Bind primary key value
             if primary_key_value.is_null() {
                 query = query.bind(None::<Option<String>>);
@@ -456,10 +435,13 @@ pub async fn update_row(
             } else {
                 query = query.bind(primary_key_value.to_string());
             }
-            
-            let result = query.execute(&pool).await.map_err(|e| format!("Update failed: {}", e))?;
+
+            let result = query
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("Update failed: {}", e))?;
             let rows_affected = result.rows_affected();
-            
+
             pool.close().await;
             Ok(serde_json::json!({ "rows_affected": rows_affected }))
         }
@@ -469,18 +451,16 @@ pub async fn update_row(
                 .connect(&conn.connection_string)
                 .await
                 .map_err(|e| format!("Failed to connect: {}", e))?;
-            
+
             // Build UPDATE statement
             let sql = format!(
                 "UPDATE {} SET {} = $1 WHERE {} = $2",
-                table_name,
-                column_name,
-                primary_key_column
+                table_name, column_name, primary_key_column
             );
-            
+
             // Bind values - handle different types
             let mut query = sqlx::query(&sql);
-            
+
             // Bind new value
             if let Some(ref val) = new_value {
                 if val.is_null() {
@@ -499,7 +479,7 @@ pub async fn update_row(
             } else {
                 query = query.bind(None::<Option<String>>);
             }
-            
+
             // Bind primary key value
             if primary_key_value.is_null() {
                 query = query.bind(None::<Option<String>>);
@@ -512,10 +492,13 @@ pub async fn update_row(
             } else {
                 query = query.bind(primary_key_value.to_string());
             }
-            
-            let result = query.execute(&pool).await.map_err(|e| format!("Update failed: {}", e))?;
+
+            let result = query
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("Update failed: {}", e))?;
             let rows_affected = result.rows_affected();
-            
+
             pool.close().await;
             Ok(serde_json::json!({ "rows_affected": rows_affected }))
         }
@@ -532,16 +515,14 @@ pub async fn create_script(
     folder_path: String,
 ) -> Result<crate::database::Script, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     let script = crate::database::NewScript {
         name,
         connection_id,
         folder_path,
     };
-    
+
     manager.create_script(script).await
 }
 
@@ -551,10 +532,8 @@ pub async fn list_scripts(
     connection_id: Option<i64>,
 ) -> Result<Vec<crate::database::Script>, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.list_scripts(connection_id).await
 }
 
@@ -564,10 +543,8 @@ pub async fn get_script(
     id: i64,
 ) -> Result<Option<crate::database::Script>, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.get_script(id).await
 }
 
@@ -578,11 +555,11 @@ pub async fn update_script_connection(
     connection_id: Option<i64>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    manager.update_script_connection(script_id, connection_id).await
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    manager
+        .update_script_connection(script_id, connection_id)
+        .await
 }
 
 #[tauri::command]
@@ -591,10 +568,8 @@ pub async fn delete_script(
     id: i64,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.delete_script(id).await
 }
 
@@ -603,10 +578,8 @@ pub async fn get_app_state(
     db_manager: tauri::State<'_, SharedDbManager>,
 ) -> Result<crate::database::AppState, String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.get_app_state().await
 }
 
@@ -622,12 +595,19 @@ pub async fn save_app_state(
     theme: Option<String>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    manager.save_app_state(active_connection_id, &open_tabs_json, active_tab_index, 
-                          show_debug_panel, show_scripts_panel, show_explorer_panel, theme).await
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    manager
+        .save_app_state(
+            active_connection_id,
+            &open_tabs_json,
+            active_tab_index,
+            show_debug_panel,
+            show_scripts_panel,
+            show_explorer_panel,
+            theme,
+        )
+        .await
 }
 
 #[tauri::command]
@@ -636,10 +616,8 @@ pub async fn set_theme(
     theme: Option<String>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.set_theme(theme).await
 }
 
@@ -650,10 +628,8 @@ pub async fn save_custom_theme(
     theme_json: Option<String>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.save_custom_theme(theme_css, theme_json).await
 }
 
@@ -662,10 +638,8 @@ pub async fn clear_custom_theme(
     db_manager: tauri::State<'_, SharedDbManager>,
 ) -> Result<(), String> {
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     manager.clear_custom_theme().await
 }
 
@@ -682,35 +656,36 @@ pub async fn create_script_file(
 ) -> Result<crate::database::Script, String> {
     let base_dir = get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     // Build full file path: scripts/{folder_path}/{name}.sql
     let folder_dir = scripts_dir.join(&folder_path);
     std::fs::create_dir_all(&folder_dir)
         .map_err(|e| format!("Failed to create directory: {}", e))?;
-    
+
     let file_path = folder_dir.join(format!("{}.sql", name));
-    let relative_path = file_path.strip_prefix(&scripts_dir)
+    let relative_path = file_path
+        .strip_prefix(&scripts_dir)
         .map_err(|_| "Failed to get relative path")?
         .to_string_lossy()
         .to_string();
-    
+
     // Create the file with initial content (or empty)
     let content = initial_content.unwrap_or_default();
     std::fs::write(&file_path, &content)
         .map_err(|e| format!("Failed to create script file: {}", e))?;
-    
+
     // Create database entry
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    let script = manager.create_script(crate::database::NewScript {
-        name: name.clone(),
-        connection_id,
-        folder_path: relative_path,
-    }).await?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    let script = manager
+        .create_script(crate::database::NewScript {
+            name: name.clone(),
+            connection_id,
+            folder_path: relative_path,
+        })
+        .await?;
+
     Ok(script)
 }
 
@@ -721,23 +696,23 @@ pub async fn read_script_file(
 ) -> Result<String, String> {
     let base_dir = get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     // Get script metadata
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    let script = manager.get_script(script_id).await?
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    let script = manager
+        .get_script(script_id)
+        .await?
         .ok_or("Script not found")?;
-    
+
     // Build full file path
     let file_path = scripts_dir.join(&script.folder_path);
-    
+
     // Read file content
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read script file: {}", e))?;
-    
+
     Ok(content)
 }
 
@@ -748,26 +723,26 @@ pub async fn delete_script_file(
 ) -> Result<(), String> {
     let base_dir = get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     // Get script metadata
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    let script = manager.get_script(script_id).await?
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    let script = manager
+        .get_script(script_id)
+        .await?
         .ok_or("Script not found")?;
-    
+
     // Build full file path and delete
     let file_path = scripts_dir.join(&script.folder_path);
     if file_path.exists() {
         std::fs::remove_file(&file_path)
             .map_err(|e| format!("Failed to delete script file: {}", e))?;
     }
-    
+
     // Delete database entry
     manager.delete_script(script_id).await?;
-    
+
     Ok(())
 }
 
@@ -779,21 +754,21 @@ pub async fn write_script_file(
 ) -> Result<(), String> {
     let base_dir = get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     // Get script metadata
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
-    let script = manager.get_script(script_id).await?
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
+    let script = manager
+        .get_script(script_id)
+        .await?
         .ok_or("Script not found")?;
-    
+
     // Build full file path and write
     let file_path = scripts_dir.join(&script.folder_path);
     std::fs::write(&file_path, &content)
         .map_err(|e| format!("Failed to write script file: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -804,31 +779,29 @@ pub async fn sync_scripts_with_db(
 ) -> Result<Vec<crate::database::Script>, String> {
     use crate::get_squeal_base_dir;
     use std::fs;
-    
+
     eprintln!("Starting script sync...");
-    
+
     let base_dir = get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     eprintln!("Scripts directory: {:?}", scripts_dir);
-    
+
     let manager_guard = db_manager.lock().await;
-    let manager = manager_guard
-        .as_ref()
-        .ok_or("Database not initialized")?;
-    
+    let manager = manager_guard.as_ref().ok_or("Database not initialized")?;
+
     // Get all existing scripts from DB to avoid duplicates
     let existing_scripts = manager.list_scripts(None).await?;
     eprintln!("Existing scripts in DB: {}", existing_scripts.len());
-    
+
     let existing_paths: std::collections::HashSet<String> = existing_scripts
         .iter()
         .map(|s| s.folder_path.clone())
         .collect();
-    
+
     // Walk the scripts directory
     let mut new_scripts = Vec::new();
-    
+
     fn visit_dirs(
         dir: &std::path::Path,
         scripts_dir: &std::path::Path,
@@ -864,41 +837,50 @@ pub async fn sync_scripts_with_db(
         }
         Ok(())
     }
-    
-    if let Err(e) = visit_dirs(&scripts_dir, &scripts_dir, &existing_paths, &mut new_scripts) {
+
+    if let Err(e) = visit_dirs(
+        &scripts_dir,
+        &scripts_dir,
+        &existing_paths,
+        &mut new_scripts,
+    ) {
         eprintln!("Error scanning scripts directory: {}", e);
     }
-    
+
     eprintln!("Found {} new scripts to add", new_scripts.len());
-    
+
     // Get connections to match folder names
     let connections = manager.list_connections().await?;
-    let conn_map: std::collections::HashMap<String, i64> = connections
-        .iter()
-        .map(|c| (c.name.clone(), c.id))
-        .collect();
-    
+    let conn_map: std::collections::HashMap<String, i64> =
+        connections.iter().map(|c| (c.name.clone(), c.id)).collect();
+
     eprintln!("Connections: {:?}", conn_map);
-    
+
     // Add missing scripts to database
     let mut added_scripts = Vec::new();
     for (relative_path, folder_name) in new_scripts {
         // Try to find matching connection by folder name
         let connection_id = conn_map.get(&folder_name).copied();
-        
-        eprintln!("Adding script: {} -> connection_id: {:?}", relative_path, connection_id);
-        
+
+        eprintln!(
+            "Adding script: {} -> connection_id: {:?}",
+            relative_path, connection_id
+        );
+
         // Extract script name from filename
         let script_name = std::path::Path::new(&relative_path)
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "unnamed".to_string());
-        
-        match manager.create_script(crate::database::NewScript {
-            name: script_name,
-            connection_id,
-            folder_path: relative_path,
-        }).await {
+
+        match manager
+            .create_script(crate::database::NewScript {
+                name: script_name,
+                connection_id,
+                folder_path: relative_path,
+            })
+            .await
+        {
             Ok(script) => {
                 eprintln!("  Successfully added script id={}", script.id);
                 added_scripts.push(script);
@@ -906,7 +888,7 @@ pub async fn sync_scripts_with_db(
             Err(e) => eprintln!("Failed to create script entry: {}", e),
         }
     }
-    
+
     // Return all scripts (existing + new)
     let all_scripts = manager.list_scripts(None).await?;
     eprintln!("Total scripts after sync: {}", all_scripts.len());

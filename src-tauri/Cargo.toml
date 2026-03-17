@@ -28,4 +28,5 @@ rmpv = "1.0"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "runtime-tokio-native-tls"] }
+shellexpand = "3.1.2"
 

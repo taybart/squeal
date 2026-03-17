@@ -1,12 +1,5 @@
 -- System configuration for Squeal
--- This file loads after the user's init.lua
 
--- Source user's init.lua first (if it exists)
--- This allows users to customize their leader key and other settings
-local user_config = vim.fn.getcwd() .. '/init.lua'
-if vim.fn.filereadable(user_config) == 1 then vim.cmd('source ' .. user_config) end
-
--- Default leader if not set by user
 if not vim.g.mapleader then vim.g.mapleader = ' ' end
 
 -- Basic settings
@@ -14,7 +7,6 @@ vim.opt.expandtab = true
 vim.opt.tabstop = 2
 vim.opt.shiftwidth = 2
 vim.opt.softtabstop = 2
-vim.opt.number = true
 vim.opt.swapfile = false
 vim.opt.backup = false
 vim.opt.timeoutlen = 1000
@@ -73,21 +65,17 @@ mode_group('v', {
   { '<S-Tab>', '<gv' },
 })
 
--- Configure runtimepath for our custom lua modules
-local config_dir = vim.fn.expand('<sfile>:p:h')
-vim.opt.runtimepath:prepend(config_dir)
-vim.opt.runtimepath:append(config_dir .. '/lua')
-
 -- Load the squeal_sql module
 local ok, squeal_sql = pcall(require, 'squeal_sql')
 if ok then
-  -- Make it globally accessible for easy access
+  -- Make it globally accessible for easy access in rpc/tauri
   _G.squeal_sql = squeal_sql
-  io.stderr:write("squeal_sql module loaded successfully\n")
+  io.stderr:write('squeal_sql module loaded successfully\n')
 else
-  io.stderr:write("Failed to load squeal_sql: " .. tostring(squeal_sql) .. "\n")
+  io.stderr:write('Failed to load squeal_sql: ' .. tostring(squeal_sql) .. '\n')
 end
 
 vim.treesitter.language.add('sql', {
-  path = vim.fn.expand('<sfile>:p:h') .. '/tree-sitter-sql.macos-arm64.so',
+  -- path = vim.fn.expand('<sfile>:p:h') .. '/tree-sitter-sql.macos-arm64.so',
+  path = vim.fn.expand('<sfile>:p:h') .. '/tree-sitter-sql.linux-arm64.so',
 })

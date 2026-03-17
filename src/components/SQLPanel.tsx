@@ -48,22 +48,22 @@ interface SQLPanelProps {
 
 export function SQLPanel(props: SQLPanelProps) {
   let inputRef: HTMLInputElement | undefined
-  
+
   const [editingCell, setEditingCell] = createSignal<{ rowIndex: number; columnName: string } | null>(null)
   const [editValue, setEditValue] = createSignal<string>("")
   const [lastError, setLastError] = createSignal<string | null>(null)
-  
+
   // Navigation state
   const [selectedRow, setSelectedRow] = createSignal<number>(0)
   const [selectedCol, setSelectedCol] = createSignal<number>(0)
   const [columns, setColumns] = createSignal<string[]>([])
-  
+
   // Resizable panel state
   const [panelHeight, setPanelHeight] = createSignal<number>(300)
   const [isResizing, setIsResizing] = createSignal<boolean>(false)
   const [startY, setStartY] = createSignal<number>(0)
   const [startHeight, setStartHeight] = createSignal<number>(300)
-  
+
   // Resizable column state
   const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({})
   const [resizingCol, setResizingCol] = createSignal<string | null>(null)
@@ -77,7 +77,7 @@ export function SQLPanel(props: SQLPanelProps) {
     setEditingCell(null)
     setSelectedRow(0)
     setSelectedCol(0)
-    
+
     // Handle both formats: raw array or object with {columns: [...], data: [...]}
     if (Array.isArray(result) && result.length > 0) {
       setColumns(Object.keys(result[0]))
@@ -99,7 +99,7 @@ export function SQLPanel(props: SQLPanelProps) {
     if (e.ctrlKey || e.metaKey || e.altKey) {
       return
     }
-    
+
     if (!props.isFocused()) return
     if (editingCell()) return // Don't navigate while editing
 
@@ -199,7 +199,7 @@ export function SQLPanel(props: SQLPanelProps) {
   const handleColResizeMove = (e: MouseEvent) => {
     const col = resizingCol()
     if (!col) return
-    
+
     const delta = e.clientX - resizeStartX()
     const newWidth = Math.max(50, resizeStartWidth() + delta)
     setColumnWidths(prev => ({ ...prev, [col]: newWidth }))
@@ -332,7 +332,7 @@ export function SQLPanel(props: SQLPanelProps) {
               <TableRow>
                 <For each={cols}>
                   {(col, colIndex) => (
-                    <TableHead 
+                    <TableHead
                       class={`relative ${props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}`}
                       style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
                     >
@@ -361,21 +361,20 @@ export function SQLPanel(props: SQLPanelProps) {
                   <TableRow class={props.isFocused() && selectedRow() === rowIndex() ? 'bg-accent' : ''}>
                     <For each={cols}>
                       {(col, colIndex) => {
-                        const isEditing = () => 
-                          editingCell()?.rowIndex === rowIndex() && 
+                        const isEditing = () =>
+                          editingCell()?.rowIndex === rowIndex() &&
                           editingCell()?.columnName === col
-                        
+
                         const canEdit = () => editable && col !== pkColumn
-                        const isSelected = () => 
-                          props.isFocused() && 
-                          selectedRow() === rowIndex() && 
+                        const isSelected = () =>
+                          props.isFocused() &&
+                          selectedRow() === rowIndex() &&
                           selectedCol() === colIndex()
 
                         return (
-                          <TableCell 
-                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${
-                              isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
-                            }`}
+                          <TableCell
+                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
+                              } max-w-[${widths[col] || 300}px] overflow-x-auto`}
                             style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
                             onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[colIndex()])}
                             onClick={() => {
@@ -419,7 +418,7 @@ export function SQLPanel(props: SQLPanelProps) {
               </For>
             </TableBody>
           </Table>
-          
+
           <Show when={isEditable() && props.isFocused() && !editingCell()}>
             <div class="mt-2 text-xs text-muted-foreground">
               j/k: move up/down • h/l: move left/right • Enter: edit cell • Double-click: edit • Esc: back to editor
@@ -435,7 +434,7 @@ export function SQLPanel(props: SQLPanelProps) {
               Ctrl+J to focus results panel
             </div>
           </Show>
-        </div>
+        </div >
       )
     }
 
@@ -457,7 +456,7 @@ export function SQLPanel(props: SQLPanelProps) {
               <TableRow>
                 <For each={cols}>
                   {(col, colIndex) => (
-                    <TableHead 
+                    <TableHead
                       class={`relative ${props.isFocused() && selectedCol() === colIndex() ? 'bg-accent' : ''}`}
                       style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
                     >
@@ -486,21 +485,20 @@ export function SQLPanel(props: SQLPanelProps) {
                   <TableRow class={props.isFocused() && selectedRow() === rowIndex() ? 'bg-accent' : ''}>
                     <For each={cols}>
                       {(col, colIndex) => {
-                        const isEditing = () => 
-                          editingCell()?.rowIndex === rowIndex() && 
+                        const isEditing = () =>
+                          editingCell()?.rowIndex === rowIndex() &&
                           editingCell()?.columnName === col
-                        
+
                         const canEdit = () => editable && col !== pkColumn
-                        const isSelected = () => 
-                          props.isFocused() && 
-                          selectedRow() === rowIndex() && 
+                        const isSelected = () =>
+                          props.isFocused() &&
+                          selectedRow() === rowIndex() &&
                           selectedCol() === colIndex()
 
                         return (
-                          <TableCell 
-                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${
-                              isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
-                            }`}
+                          <TableCell
+                            class={`${canEdit() ? 'cursor-pointer' : ''} ${isEditing() ? 'p-0' : ''} ${isSelected() && !isEditing() ? 'ring-2 ring-primary ring-inset' : ''
+                              }`}
                             style={{ width: `${widths[col] || 120}px`, 'min-width': `${widths[col] || 120}px` }}
                             onDblClick={() => handleCellDoubleClick(rowIndex(), col, row[col])}
                             onClick={() => {
@@ -544,7 +542,7 @@ export function SQLPanel(props: SQLPanelProps) {
               </For>
             </TableBody>
           </Table>
-          
+
           <Show when={isEditable() && props.isFocused() && !editingCell()}>
             <div class="mt-2 text-xs text-muted-foreground">
               j/k: move up/down • h/l: move left/right • Enter: edit cell • Double-click: edit • Esc: back to editor
@@ -575,10 +573,9 @@ export function SQLPanel(props: SQLPanelProps) {
 
   return (
     <Show when={props.showResults()}>
-      <Card 
-        class={`relative rounded-none border-t border-x-0 border-b-0 flex flex-col ${
-          props.isFocused() ? 'ring-2 ring-primary ring-inset' : ''
-        } ${isResizing() ? 'select-none' : ''}`}
+      <Card
+        class={`relative rounded-none border-t border-x-0 border-b-0 flex flex-col ${props.isFocused() ? 'ring-2 ring-primary ring-inset' : ''
+          } ${isResizing() ? 'select-none' : ''}`}
         style={{ height: `${panelHeight()}px` }}
       >
         {/* Resize handle */}
@@ -591,23 +588,23 @@ export function SQLPanel(props: SQLPanelProps) {
         </div>
 
         <CardHeader class="flex flex-row items-center justify-between space-y-0 py-1 px-3 pt-3">
-            <div class="flex items-center gap-1.5">
-              <span class={`text-xs font-semibold ${props.isFocused() ? 'text-primary' : ''}`}>
-                Results
-              </span>
-              <Show when={props.tableName()}>
-                <Badge variant="outline" class="text-[10px] px-1.5 py-0 h-5">{props.tableName()}</Badge>
-              </Show>
-              <Show when={props.primaryKeyColumn()}>
-                <Badge variant="default" class="text-[9px] px-1.5 py-0 h-4">PK</Badge>
-              </Show>
-              <Show when={editingCell()}>
-                <Badge variant="secondary" class="text-[9px] animate-pulse px-1.5 py-0 h-4">edit</Badge>
-              </Show>
-            </div>
+          <div class="flex items-center gap-1.5">
+            <span class={`text-xs font-semibold ${props.isFocused() ? 'text-primary' : ''}`}>
+              Results
+            </span>
+            <Show when={props.tableName()}>
+              <Badge variant="outline" class="text-[10px] px-1.5 py-0 h-5">{props.tableName()}</Badge>
+            </Show>
+            <Show when={props.primaryKeyColumn()}>
+              <Badge variant="default" class="text-[9px] px-1.5 py-0 h-4">PK</Badge>
+            </Show>
+            <Show when={editingCell()}>
+              <Badge variant="secondary" class="text-[9px] animate-pulse px-1.5 py-0 h-4">edit</Badge>
+            </Show>
+          </div>
           <div class="flex items-center gap-1">
             <Show when={props.currentStatement()}>
-              <Button 
+              <Button
                 onClick={props.onExecute}
                 disabled={!props.hasSelectedConnection() || !!editingCell()}
                 size="sm"
@@ -617,8 +614,8 @@ export function SQLPanel(props: SQLPanelProps) {
                 Run
               </Button>
             </Show>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="icon"
               class="h-6 w-6"
               onClick={props.onClose}

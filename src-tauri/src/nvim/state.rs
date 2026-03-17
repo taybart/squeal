@@ -1,5 +1,5 @@
-use crate::nvim::handler::NeovimHandler;
 use crate::get_config_dir;
+use crate::nvim::handler::NeovimHandler;
 use nvim_rs::{compat::tokio::Compat, create::tokio as create, Neovim};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -42,12 +42,12 @@ pub enum NvimEvent {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BufferTab {
-    pub id: i64,                      // Unique tab ID
-    pub buffer_id: Option<i64>,       // Nvim buffer handle
-    pub script_id: Option<i64>,       // Associated script (if saved)
-    pub name: String,                 // Display name
-    pub file_path: String,            // Full path to file
-    pub connection_id: Option<i64>,   // Associated connection
+    pub id: i64,                    // Unique tab ID
+    pub buffer_id: Option<i64>,     // Nvim buffer handle
+    pub script_id: Option<i64>,     // Associated script (if saved)
+    pub name: String,               // Display name
+    pub file_path: String,          // Full path to file
+    pub connection_id: Option<i64>, // Associated connection
     pub is_modified: bool,
     pub is_active: bool,
 }
@@ -57,8 +57,8 @@ pub struct NeovimState {
     pub nvim_process: Child,
     pub debug_logs: Arc<Mutex<Vec<String>>>,
     pub event_sender: mpsc::UnboundedSender<NvimEvent>,
-    pub tabs: Vec<BufferTab>,           // Multiple buffer tabs
-    pub next_tab_id: i64,             // Counter for unique tab IDs
+    pub tabs: Vec<BufferTab>, // Multiple buffer tabs
+    pub next_tab_id: i64,     // Counter for unique tab IDs
 }
 
 // State type alias
@@ -116,7 +116,13 @@ pub async fn start_nvim_instance(
                 NvimEvent::BufUpdate(lines) => {
                     let _ = app_handle_for_events.emit("nvim-buf-update", lines.join("\n"));
                 }
-                NvimEvent::SqlStatement { text, start_row, start_col, end_row, end_col } => {
+                NvimEvent::SqlStatement {
+                    text,
+                    start_row,
+                    start_col,
+                    end_row,
+                    end_col,
+                } => {
                     let _ = app_handle_for_events.emit(
                         "sql-statement",
                         serde_json::json!({
@@ -165,24 +171,12 @@ pub async fn start_nvim_instance(
         }
     });
 
-    // Start nvim with TCP server on the available port and capture stderr
-    // Use --headless for no UI and -u to load local init.lua
-    let config_dir = get_config_dir();
-    let init_lua_path = config_dir.join("init.lua");
-
-    // Build runtimepath: include our config dir first, then default paths
-    let rtp_cmd = format!("set runtimepath^={}", config_dir.display());
+    let config_dir = crate::get_squeal_base_dir().join("config"); // e.g. /home/user/.config/squeal/nvim
 
     let mut nvim_process = tokio::process::Command::new("nvim")
-        .args([
-            "--headless",
-            "--listen",
-            &listen_addr,
-            "--cmd", // Set runtimepath BEFORE loading init.lua
-            &rtp_cmd,
-            "-u",
-            &init_lua_path.to_string_lossy(),
-        ])
+        .env("XDG_CONFIG_HOME", config_dir.parent().unwrap()) // e.g. /home/user/.config/squeal
+        .env("NVIM_APPNAME", config_dir.file_name().unwrap()) // e.g. "nvim"
+        .args(["--headless", "--listen", &listen_addr])
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn Neovim TCP server: {}", e))?;
@@ -206,7 +200,7 @@ pub async fn start_nvim_instance(
     }
 
     // Give nvim a moment to start
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Create handler for Neovim events with the event sender
     let handler = NeovimHandler::new(event_sender_for_handler);
@@ -244,11 +238,11 @@ pub async fn start_nvim_instance(
     // Open the file if provided, otherwise create a default scratch file in _squeal/scripts
     let base_dir = crate::get_squeal_base_dir();
     let scripts_dir = base_dir.join("scripts");
-    
+
     // Ensure scripts directory exists
     std::fs::create_dir_all(&scripts_dir)
         .map_err(|e| format!("Failed to create scripts directory: {}", e))?;
-    
+
     let full_path = if let Some(path) = file_path {
         // If a specific path is provided, use it
         if std::path::Path::new(&path).is_absolute() {
@@ -260,7 +254,7 @@ pub async fn start_nvim_instance(
         // Default to a scratch file in _squeal/scripts
         scripts_dir.join("scratch.sql")
     };
-    
+
     // Ensure the parent directory exists
     if let Some(parent) = full_path.parent() {
         std::fs::create_dir_all(parent)
@@ -302,13 +296,14 @@ pub async fn start_nvim_instance(
 
     // Store the Neovim state with the nvim instance
     let mut state_guard = state.lock().await;
-    
+
     // Create the initial tab for the opened file
     let initial_tab = BufferTab {
         id: 1,
         buffer_id: None, // Will be populated later
         script_id: None,
-        name: full_path.file_name()
+        name: full_path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "unnamed".to_string()),
         file_path: full_path.to_string_lossy().to_string(),
@@ -316,7 +311,7 @@ pub async fn start_nvim_instance(
         is_modified: false,
         is_active: true,
     };
-    
+
     *state_guard = Some(NeovimState {
         nvim,
         nvim_process,
@@ -397,18 +392,22 @@ pub async fn start_nvim_instance(
                     String::new()
                 };
                 let content_changed = content_joined_for_check != last_content;
-                
+
                 // Fetch statement bounds before dropping state_guard (if cursor or content changed)
-                let statement_bounds = if (cursor_changed || content_changed) && cursor_pos.is_some() {
-                    let bounds_result = nvim.command_output(
-                        "lua print(vim.json.encode(squeal_sql.get_stmt_info_under_cursor()))"
-                    ).await;
-                    
+                let statement_bounds = if (cursor_changed || content_changed)
+                    && cursor_pos.is_some()
+                {
+                    let bounds_result = nvim
+                        .command_output("lua print(vim.json.encode(get_stmt_info_under_cursor()))")
+                        .await;
+
                     match bounds_result {
                         Ok(bounds_str) => {
                             let trimmed = bounds_str.trim();
                             if trimmed != "null" && trimmed != "nil" && !trimmed.is_empty() {
-                                match serde_json::from_str::<crate::nvim::commands::StatementBounds>(trimmed) {
+                                match serde_json::from_str::<crate::nvim::commands::StatementBounds>(
+                                    trimmed,
+                                ) {
                                     Ok(bounds) => Some(bounds),
                                     Err(_) => None,
                                 }
@@ -426,13 +425,16 @@ pub async fn start_nvim_instance(
                 let visual_selection_result = if let Ok(ref mode_str) = mode_result {
                     let mode = mode_str.trim();
                     if mode == "v" || mode == "V" || mode == "\x16" {
-                        let start_result = nvim.command_output("echo getpos('v')[1] . ',' . getpos('v')[2]").await;
-                        let end_result = nvim.command_output("echo line('.') . ',' . col('.')").await;
-                        
+                        let start_result = nvim
+                            .command_output("echo getpos('v')[1] . ',' . getpos('v')[2]")
+                            .await;
+                        let end_result =
+                            nvim.command_output("echo line('.') . ',' . col('.')").await;
+
                         if let (Ok(start_str), Ok(end_str)) = (start_result, end_result) {
                             let start_parts: Vec<&str> = start_str.trim().split(',').collect();
                             let end_parts: Vec<&str> = end_str.trim().split(',').collect();
-                            
+
                             if start_parts.len() == 2 && end_parts.len() == 2 {
                                 let start_row = start_parts[0].parse::<i64>().unwrap_or(1) - 1;
                                 let start_col = start_parts[1].parse::<i64>().unwrap_or(0) - 1;
@@ -505,7 +507,13 @@ pub async fn start_nvim_instance(
                     let cmdline_changed = cmdline != last_cmdline;
                     let visual_changed = visual_selection != last_visual_selection;
 
-                    if content_changed || mode_changed || cursor_changed || file_changed || cmdline_changed || visual_changed {
+                    if content_changed
+                        || mode_changed
+                        || cursor_changed
+                        || file_changed
+                        || cmdline_changed
+                        || visual_changed
+                    {
                         // Send StateUpdate event
                         let result = app_handle_for_polling.emit(
                             "nvim-state-update",

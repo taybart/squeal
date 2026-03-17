@@ -322,10 +322,13 @@ pub async fn open_file_internal(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path_str.clone());
-            let _ = app_handle.emit("file-opened", serde_json::json!({
-                "filename": filename,
-                "path": path_str
-            }));
+            let _ = app_handle.emit(
+                "file-opened",
+                serde_json::json!({
+                    "filename": filename,
+                    "path": path_str
+                }),
+            );
 
             return Ok(path_str);
         } else {
@@ -713,28 +716,36 @@ pub async fn insert_text_at_cursor(
     let state_guard = state.lock().await;
     if let Some(nvim_state) = state_guard.as_ref() {
         let nvim = &nvim_state.nvim;
-        
+
         // Get cursor position
-        let win = nvim.get_current_win().await
+        let win = nvim
+            .get_current_win()
+            .await
             .map_err(|e| format!("Failed to get window: {}", e))?;
-        let (row, col) = win.get_cursor().await
+        let (row, col) = win
+            .get_cursor()
+            .await
             .map_err(|e| format!("Failed to get cursor: {}", e))?;
-        
+
         // Get current buffer
-        let buf = nvim.get_current_buf().await
+        let buf = nvim
+            .get_current_buf()
+            .await
             .map_err(|e| format!("Failed to get buffer: {}", e))?;
-        
+
         // Get current line
-        let lines = buf.get_lines(row as i64 - 1, row as i64, false).await
+        let lines = buf
+            .get_lines(row as i64 - 1, row as i64, false)
+            .await
             .map_err(|e| format!("Failed to get lines: {}", e))?;
-        
+
         if lines.is_empty() {
             return Err("Buffer is empty".to_string());
         }
-        
+
         let current_line = &lines[0];
         let col_idx = col as usize;
-        
+
         // Split the line at cursor position
         let before = &current_line[..col_idx.min(current_line.len())];
         let after = if col_idx < current_line.len() {
@@ -742,15 +753,16 @@ pub async fn insert_text_at_cursor(
         } else {
             ""
         };
-        
+
         // Handle multi-line insert
         let new_text = format!("{}{}{}", before, text, after);
         let new_lines: Vec<String> = new_text.lines().map(|s| s.to_string()).collect();
-        
+
         // Replace the line(s)
-        buf.set_lines(row as i64 - 1, row as i64, false, new_lines.clone()).await
+        buf.set_lines(row as i64 - 1, row as i64, false, new_lines.clone())
+            .await
             .map_err(|e| format!("Failed to set lines: {}", e))?;
-        
+
         // Move cursor to end of inserted text
         let last_line_idx = new_lines.len() - 1;
         let last_line = &new_lines[last_line_idx];
@@ -762,10 +774,11 @@ pub async fn insert_text_at_cursor(
             // Multi-line insert - cursor at end of last line
             last_line.len() as i64 - after.len() as i64
         };
-        
-        win.set_cursor((new_row, new_col.max(0))).await
+
+        win.set_cursor((new_row, new_col.max(0)))
+            .await
             .map_err(|e| format!("Failed to set cursor: {}", e))?;
-        
+
         Ok(())
     } else {
         Err("Neovim not initialized".to_string())

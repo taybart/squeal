@@ -3,11 +3,11 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
+mod commands;
 mod database;
-mod db_commands;
+mod db;
 mod menu;
 mod nvim;
-mod commands;
 
 pub use database::{DatabaseManager, SharedDbManager};
 pub use nvim::{NeovimState, SharedState};
@@ -15,28 +15,10 @@ pub use nvim::{NeovimState, SharedState};
 /// Get the squeal base directory (_squeal folder in project root)
 /// This is where all configuration, scripts, and database files are stored
 pub fn get_squeal_base_dir() -> PathBuf {
-    let current_dir = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    
-    // If we're in src-tauri, go up one level to project root
-    let project_root = if current_dir
-        .file_name()
-        .map(|n| n == "src-tauri")
-        .unwrap_or(false)
-    {
-        current_dir.join("..")
-    } else {
-        current_dir
-    };
-    
-    project_root.join("_squeal")
+    let raw = std::env::var("SQUEAL_DIR").unwrap_or("~/.config/squeal".into());
+    let expanded = shellexpand::tilde(&raw);
+    std::path::PathBuf::from(expanded.as_ref())
 }
-
-/// Get the squeal base directory as a string (for frontend)
-// #[tauri::command]
-// pub fn get_base_dir() -> String {
-//     get_squeal_base_dir().to_string_lossy().to_string()
-// }
 
 /// Get the config directory within the squeal base directory
 pub fn get_config_dir() -> PathBuf {
@@ -62,14 +44,14 @@ pub async fn open_settings_window_impl(app: tauri::AppHandle) -> Result<(), Stri
             tauri::WebviewUrl::App("settings.html".into()),
         )
         .title("Settings")
-        .inner_size(500.0, 600.0)
+        .inner_size(500., 600.)
         .resizable(true)
         .visible(true);
-        
+
         window_builder
             .build()
             .map_err(|e| format!("Failed to create settings window: {}", e))?;
-        
+
         Ok(())
     }
 }
@@ -101,23 +83,29 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 // Get squeal base directory (_squeal folder)
                 let base_dir = get_squeal_base_dir();
-                
+
                 // Ensure the base directory exists
                 if let Err(e) = std::fs::create_dir_all(&base_dir) {
                     eprintln!("Failed to create base directory {:?}: {}", base_dir, e);
                     return;
                 }
-                
+
                 // Create scripts directory if it doesn't exist
                 let scripts_dir = base_dir.join("scripts");
                 if let Err(e) = std::fs::create_dir_all(&scripts_dir) {
-                    eprintln!("Failed to create scripts directory {:?}: {}", scripts_dir, e);
+                    eprintln!(
+                        "Failed to create scripts directory {:?}: {}",
+                        scripts_dir, e
+                    );
                 }
-                
+
                 // Create archived_connections directory if it doesn't exist
                 let archived_dir = base_dir.join("archived_connections");
                 if let Err(e) = std::fs::create_dir_all(&archived_dir) {
-                    eprintln!("Failed to create archived_connections directory {:?}: {}", archived_dir, e);
+                    eprintln!(
+                        "Failed to create archived_connections directory {:?}: {}",
+                        archived_dir, e
+                    );
                 }
 
                 let db_path = base_dir.join("squeal.db");
@@ -176,29 +164,29 @@ pub fn run() {
             nvim::commands::update_tab_connection,
             nvim::commands::open_file_path,
             nvim::commands::insert_text_at_cursor,
-            db_commands::add_connection,
-            db_commands::list_connections,
-            db_commands::delete_connection,
-            db_commands::test_connection,
-            db_commands::execute_sql,
-            db_commands::list_tables,
-            db_commands::get_table_schema,
-            db_commands::update_row,
-            db_commands::create_script,
-            db_commands::list_scripts,
-            db_commands::get_script,
-            db_commands::update_script_connection,
-            db_commands::delete_script,
-            db_commands::get_app_state,
-            db_commands::save_app_state,
-            db_commands::set_theme,
-            db_commands::save_custom_theme,
-            db_commands::clear_custom_theme,
-            db_commands::sync_scripts_with_db,
-            db_commands::create_script_file,
-            db_commands::read_script_file,
-            db_commands::delete_script_file,
-            db_commands::write_script_file
+            db::commands::add_connection,
+            db::commands::list_connections,
+            db::commands::delete_connection,
+            db::commands::test_connection,
+            db::commands::execute_sql,
+            db::commands::list_tables,
+            db::commands::get_table_schema,
+            db::commands::update_row,
+            db::commands::create_script,
+            db::commands::list_scripts,
+            db::commands::get_script,
+            db::commands::update_script_connection,
+            db::commands::delete_script,
+            db::commands::get_app_state,
+            db::commands::save_app_state,
+            db::commands::set_theme,
+            db::commands::save_custom_theme,
+            db::commands::clear_custom_theme,
+            db::commands::sync_scripts_with_db,
+            db::commands::create_script_file,
+            db::commands::read_script_file,
+            db::commands::delete_script_file,
+            db::commands::write_script_file
         ])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::Destroyed = event {
