@@ -1,3 +1,5 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogCloseButton, DialogFooter } from "~/components/ui/dialog"
+import { useConfirm } from "~/components/ui/confirm"
 import { createSignal, createEffect, onMount, Show } from "solid-js"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
@@ -28,13 +30,13 @@ function App() {
   const [focusedPanel, setFocusedPanel] = createSignal<'editor' | 'results'>('editor')
   const [sidebarWidth, setSidebarWidth] = createSignal(288) // 72 * 4 = 288px (w-72 default)
   const [isResizingSidebar, setIsResizingSidebar] = createSignal(false)
-  
+
   // Panel height states (in pixels) - stored in localStorage for persistence
   const getInitialHeight = (key: string, defaultValue: number) => {
     const saved = localStorage.getItem(key)
     return saved ? parseInt(saved, 10) : defaultValue
   }
-  
+
   const [debugPanelHeight, setDebugPanelHeight] = createSignal(getInitialHeight('debugPanelHeight', 200))
   const [scriptsPanelHeight, setScriptsPanelHeight] = createSignal(getInitialHeight('scriptsPanelHeight', 300))
   const [resizingPanel, setResizingPanel] = createSignal<string | null>(null)
@@ -103,6 +105,7 @@ function App() {
 
   // Theme management
   const { loadTheme } = useTheme()
+  const { confirm } = useConfirm()
 
   // Debug: log scripts changes
   createEffect(() => {
@@ -114,13 +117,16 @@ function App() {
   })
 
   const [showScriptsPanel, setShowScriptsPanel] = createSignal(false)
+  const [showCreateScriptDialog, setShowCreateScriptDialog] = createSignal(false)
+  const [createScriptConnectionId, setCreateScriptConnectionId] = createSignal<number | null | undefined>(null)
+  const [newScriptName, setNewScriptName] = createSignal("")
 
   // Save panel visibility states when they change
   createEffect(() => {
     const debug = showDebug()
     const scripts = showScriptsPanel()
     const explorer = showExplorer()
-    
+
     // Only save if we're connected (database is ready)
     if (connected()) {
       debugLog("Saving panel states:", { debug, scripts, explorer })
@@ -132,7 +138,7 @@ function App() {
   createEffect(() => {
     const connId = selectedConnection()
     loadScripts(connId ?? undefined)
-    
+
     // Update active tab's connection
     const activeTab = activeTabId()
     if (activeTab && connId) {
@@ -147,10 +153,10 @@ function App() {
     // Sync scripts from filesystem on mount
     debugLog("onMount: Starting sync...")
     syncScriptsWithDb()
-    
+
     // Load theme from database
     await loadTheme()
-    
+
     // Restore panel visibility from saved state
     try {
       const appState = await getAppState()
@@ -167,7 +173,7 @@ function App() {
     } catch (e) {
       debugError("Failed to restore panel states:", e)
     }
-    
+
     // Listen for "menu-toggle-debug-logging" event from the menu
     const unlistenToggleDebugLogging = listen("menu-toggle-debug-logging", () => {
       const newState = !isDebugEnabled()
@@ -176,7 +182,7 @@ function App() {
       // Show a toast notification  
       alert(`Debug logging ${newState ? 'enabled' : 'disabled'}. Reload to apply changes.`)
     })
-    
+
     // Listen for "menu-open-settings" event from the menu
     const unlistenOpenSettings = listen("menu-open-settings", () => {
       openSettingsWindow()
@@ -257,11 +263,11 @@ function App() {
     // 2. Otherwise, use the selected connection
     const activeTab = tabs().find(t => t.is_active)
     let connId = activeTab?.connection_id
-    
+
     if (!connId) {
       connId = selectedConnection()
     }
-    
+
     if (!connId) {
       // Open settings window if no connection selected
       await openSettingsWindow()
@@ -319,39 +325,39 @@ function App() {
     // Determine which connection to use (same logic as handleRunLine)
     const activeTab = tabs().find(t => t.is_active)
     let connId = activeTab?.connection_id
-    
+
     if (!connId) {
       connId = selectedConnection()
     }
-    
+
     if (!connId) {
       await openSettingsWindow()
       return
     }
-    
+
     try {
       const stmts = await invoke<string[]>("get_all_sql_statements")
       debugLog("Statements to execute:", stmts)
-      
+
       if (stmts.length === 0) {
         debugLog("No SQL statements found in file")
         return
       }
-      
+
       setShowResults(true)
-      
+
       // Execute all statements sequentially
       const results = []
       for (const stmt of stmts) {
         const result = await executeSql(connId!, stmt)
         results.push(result)
       }
-      
+
       // Show the last result (or aggregate them)
       if (results.length > 0) {
         setSqlQueryResult(results[results.length - 1])
       }
-      
+
       debugLog("Execute File results:", results)
     } catch (e) {
       debugError("Failed to execute file:", e)
@@ -370,12 +376,12 @@ function App() {
       const newWidth = Math.max(200, Math.min(500, window.innerWidth - e.clientX))
       setSidebarWidth(newWidth)
     }
-    
+
     // Handle vertical panel resizing
     if (resizingPanel()) {
       const deltaY = e.clientY - resizingStartY()
       const newHeight = Math.max(100, Math.min(600, resizingStartHeight() + deltaY))
-      
+
       switch (resizingPanel()) {
         case 'debug':
           setDebugPanelHeight(newHeight)
@@ -393,7 +399,7 @@ function App() {
     setIsResizingSidebar(false)
     setResizingPanel(null)
   }
-  
+
   // Panel resize handlers
   const handlePanelResizeStart = (panel: string, currentHeight: number) => (e: MouseEvent) => {
     e.preventDefault()
@@ -566,6 +572,31 @@ function App() {
     return conn?.name ?? null
   }
 
+  const handleCreateScript = async () => {
+    const scriptName = newScriptName().trim()
+    if (!scriptName) return
+
+    const connId = createScriptConnectionId()
+    const folderPath = connId ? connections().find((c: { id: number; name: string }) => c.id === connId)?.name ?? "Unassigned" : "Unassigned"
+
+    const script = await createScriptFile(scriptName, connId ?? null, folderPath)
+    if (script) {
+      const baseDir = await invoke<string>("get_base_dir")
+      const fullPath = `${baseDir}/scripts/${script.folder_path}`
+      await invoke("open_file_path", { filePath: fullPath })
+      const newTab = await createTab(script.name, fullPath, connId)
+      if (newTab) {
+        const filePath = await switchTab(newTab.id)
+        if (filePath) {
+          await invoke("open_file_path", { filePath })
+        }
+      }
+    }
+
+    setShowCreateScriptDialog(false)
+    setNewScriptName("")
+  }
+
   return (
     <main class="h-full w-full flex flex-col">
       <Toaster />
@@ -604,25 +635,25 @@ function App() {
             // Create a new untitled tab with unique name
             const baseDir = await invoke<string>("get_base_dir")
             const scriptsDir = `${baseDir}/scripts`
-            
+
             // Find next available untitled number
             let counter = 1
             let fileName = `untitled_${counter}.sql`
             let fullPath = `${scriptsDir}/${fileName}`
-            
+
             // Check if file exists and increment counter
             while (await invoke<boolean>("file_exists", { path: fullPath }).catch(() => false)) {
               counter++
               fileName = `untitled_${counter}.sql`
               fullPath = `${scriptsDir}/${fileName}`
             }
-            
+
             // Create empty file
-            await invoke("write_file", { 
+            await invoke("write_file", {
               path: fullPath,
-              content: "-- New SQL file\n" 
-            }).catch(() => {})
-            
+              content: "-- New SQL file\n"
+            }).catch(() => { })
+
             const newTab = await createTab(fileName, fullPath)
             if (newTab) {
               // Switch to the new tab
@@ -653,7 +684,7 @@ function App() {
 
         {/* Right sidebar - only show when panels are visible */}
         <Show when={showDebug() || showScriptsPanel() || showExplorer()}>
-          <div 
+          <div
             class={`flex flex-col border-l relative ${isResizingSidebar() || resizingPanel() ? 'select-none' : ''}`}
             style={{ width: `${sidebarWidth()}px`, 'min-width': '200px' }}
           >
@@ -663,10 +694,10 @@ function App() {
               onMouseDown={handleSidebarResizeStart}
               title="Drag to resize sidebar"
             />
-            
+
             {/* Debug Panel - with resizable height */}
             <Show when={showDebug()}>
-              <div 
+              <div
                 class="flex-shrink-0 flex flex-col overflow-hidden"
                 style={{ height: `${debugPanelHeight()}px`, 'min-height': '100px' }}
               >
@@ -681,10 +712,10 @@ function App() {
                 />
               </Show>
             </Show>
-            
+
             {/* Scripts Explorer - with resizable height */}
             <Show when={showScriptsPanel()}>
-              <div 
+              <div
                 class="flex-shrink-0 flex flex-col overflow-hidden"
                 style={{ height: `${scriptsPanelHeight()}px`, 'min-height': '100px' }}
               >
@@ -697,29 +728,10 @@ function App() {
                   onClose={() => setShowScriptsPanel(false)}
                   onSync={syncScriptsWithDb}
                   onCreateScript={async (connectionId?: number | null) => {
-                    // If connectionId is undefined, use the currently selected connection
-                    // If connectionId is null, create in Unassigned but use selected connection for execution
                     const connId = connectionId === undefined ? selectedConnection() : connectionId
-                    const folderPath = connId ? connections().find((c: { id: number; name: string }) => c.id === connId)?.name ?? "Unassigned" : "Unassigned"
-                    const scriptName = prompt("Enter script name:")
-                    if (scriptName) {
-                      // Create script file and open in new tab
-                      const script = await createScriptFile(scriptName, connId, folderPath)
-                      if (script) {
-                        // Open in nvim directly (no file picker)
-                        const baseDir = await invoke<string>("get_base_dir")
-                        const fullPath = `${baseDir}/scripts/${script.folder_path}`
-                        await invoke("open_file_path", { filePath: fullPath })
-                        // Create a tab for it and switch to it
-                        const newTab = await createTab(script.name, fullPath, connId)
-                        if (newTab) {
-                          const filePath = await switchTab(newTab.id)
-                          if (filePath) {
-                            await invoke("open_file_path", { filePath })
-                          }
-                        }
-                      }
-                    }
+                    setCreateScriptConnectionId(connId)
+                    setNewScriptName("")
+                    setShowCreateScriptDialog(true)
                   }}
                   onOpenScript={async (script) => {
                     // Read the file content first
@@ -741,7 +753,11 @@ function App() {
                     }
                   }}
                   onDeleteScript={async (scriptId: number) => {
-                    if (confirm("Are you sure you want to delete this script?")) {
+                    const confirmed = await confirm({
+                      title: "Delete Script",
+                      description: "Are you sure you want to delete this script? This action cannot be undone.",
+                    })
+                    if (confirmed) {
                       await deleteScriptFile(scriptId)
                     }
                   }}
@@ -756,7 +772,7 @@ function App() {
                 />
               </Show>
             </Show>
-            
+
             {/* Table Explorer - takes remaining space */}
             <Show when={showExplorer()}>
               <div class="flex-1 flex flex-col overflow-hidden min-h-[100px]">
@@ -786,10 +802,10 @@ function App() {
                     // Generate INSERT statement for the table
                     const columnNames = columns.map(col => col.name).join(', ')
                     const valuePlaceholders = columns.map(() => '?').join(', ')
-                    
+
                     // Build INSERT statement (without comments to keep it clean)
                     const insertStatement = `INSERT INTO ${tableName} (${columnNames})\nVALUES (${valuePlaceholders});`
-                    
+
                     try {
                       // Insert directly into the nvim buffer at cursor position
                       await invoke("insert_text_at_cursor", { text: insertStatement })
@@ -797,7 +813,7 @@ function App() {
                     } catch (err) {
                       debugError('Failed to insert text:', err)
                       // Fallback to clipboard
-                      navigator.clipboard.writeText(insertStatement).catch(() => {})
+                      navigator.clipboard.writeText(insertStatement).catch(() => { })
                     }
                   }}
                 />
@@ -841,6 +857,42 @@ function App() {
           <span class="font-bold">E:</span> {displayError()}
         </div>
       </Show>
+
+      <Dialog open={showCreateScriptDialog()} onOpenChange={setShowCreateScriptDialog}>
+        <DialogContent class="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New Script</DialogTitle>
+            <DialogDescription>
+              Enter a name for your new SQL script.
+            </DialogDescription>
+          </DialogHeader>
+          <div class="grid gap-4 py-4">
+            <input
+              type="text"
+              value={newScriptName()}
+              onInput={(e) => setNewScriptName(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newScriptName().trim()) {
+                  handleCreateScript()
+                }
+              }}
+              placeholder="script_name.sql"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              autofocus
+            />
+          </div>
+          <DialogFooter>
+            <DialogCloseButton class="secondary">Cancel</DialogCloseButton>
+            <button
+              class="primary inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+              onClick={handleCreateScript}
+              disabled={!newScriptName().trim()}
+            >
+              Create
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </main>
   )

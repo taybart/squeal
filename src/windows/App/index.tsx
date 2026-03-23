@@ -7,18 +7,20 @@ import {
   ColorModeScript,
   createLocalStorageManager,
 } from "@kobalte/core"
+import { ConfirmProvider } from "~/components/ui/confirm"
 
 render(() => {
-  // Use localStorage for kobalte's color mode (required by UI components)
   const storageManager = createLocalStorageManager("squeal-theme")
   
   return (
     <MetaProvider>
       <ColorModeScript storageType={storageManager.type} />
       <ColorModeProvider storageManager={storageManager}>
-        <Suspense>
-          <App />
-        </Suspense>
+        <ConfirmProvider>
+          <Suspense>
+            <App />
+          </Suspense>
+        </ConfirmProvider>
       </ColorModeProvider>
     </MetaProvider>
   )

@@ -75,7 +75,11 @@ else
   io.stderr:write('Failed to load squeal_sql: ' .. tostring(squeal_sql) .. '\n')
 end
 
+local ts_name = '/tree-sitter-sql.linux-arm64.so'
+if vim.fn.has('mac') == 1 then
+  ts_name = '/tree-sitter-sql.macos-arm64.so'
+end
 vim.treesitter.language.add('sql', {
   -- path = vim.fn.expand('<sfile>:p:h') .. '/tree-sitter-sql.macos-arm64.so',
-  path = vim.fn.expand('<sfile>:p:h') .. '/tree-sitter-sql.linux-arm64.so',
+  path = vim.fn.expand('<sfile>:p:h') .. ts_name,
 })
